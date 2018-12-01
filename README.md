@@ -10,6 +10,10 @@ In International Workshop on Computer-Assisted and Robotic Endoscopy 2018 (Best 
 
 Please contact Xingtong Liu (xliu89@jh.edu) if you have any questions.
 
+If you use the code here, please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15).
+
 # Disclaimer
 
-This code is only experimental and not ready for clinical applications. Authors do not take any responsibilities if any accident related to this code happen.
+This code is only experimental and not ready for clinical applications. Authors do not take any responsibilities if any accident related to
+
+this code happen.
