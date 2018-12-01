@@ -14,6 +14,6 @@ If you use the code here, please cite [this paper](https://link.springer.com/cha
 
 # Disclaimer
 
-This code is only experimental and not ready for clinical applications. Authors do not take any responsibilities if any accident related to
+This code is only experimental and not ready for clinical applications. 
 
-this code happen.
+Authors do not take any responsibilities if any accident related to this code happen.
