@@ -37,5 +37,5 @@ Please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-012
 
 This code is only experimental and not ready for clinical applications.
 
-Authors is not responsible for any accidents related to this repository.
+Authors are not responsible for any accidents related to this repository.
 
