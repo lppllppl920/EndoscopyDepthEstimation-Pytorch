@@ -18,15 +18,15 @@ Please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-012
 
 2. Generate training data from training videos using Structure from Motion (SfM) or Simultaneous Localization and Mapping (SLAM). Refer to one training example in this repository.
 
-3. Run teacher_training.py with proper arguments for teacher-self-supervised learning, one example is:
+3. Run teacher_training.py with proper arguments for teacher-self-supervised learning. One example is:
 ```
 /path/to/python /path/to/teacher_training.py --adjacent_range 10 20 --max_lr 1.0e-3 --min_lr 1.0e-4 --testing_patient_id 2 --use_hsv_colorspace --load_intermediate_data --number_epoch 4 --ssl_weight 0.3 --dcl_weight 10.0 --sfl_weight 100.0 --batch_size 8 --num_workers 8 --training_data_path "/path/to/training/data" --training_root "/path/to/training/directory"
 ```
-4. Run teacher_student_training.py with proper arguments for teacher-supervise-student learning, one example is:
+4. Run teacher_student_training.py with proper arguments for teacher-supervise-student learning. One example is:
 ```
 /path/to/python /path/to/teacher_student_training.py --adjacent_range 10 20 --max_lr 1.0e-3 --min_lr 1.0e-4 --testing_patient_id 2 --use_hsv_colorspace --load_intermediate_data --number_epoch 1 --batch_size 8 --num_workers 8 --training_data_path "/path/to/training/data" --training_root "/path/to/training/directory"
 ```
-5. Run teacher_student_training.py with proper arguments for student-self-supervised learning, one example is:
+5. Run teacher_student_training.py with proper arguments for student-self-supervised learning. One example is:
 ```
 /path/to/python /path/to/teacher_student_training.py --adjacent_range 10 20 --max_lr 1.0e-3 --min_lr 1.0e-4 --testing_patient_id $counter --student_learn_from_sfm --load_intermediate_data --use_hsv_colorspace --number_epoch 12 --ssl_weight 0.3 --dcl_weight 10.0 --sfl_weight 100.0 --batch_size 8 --num_workers 4 --use_previous_student_model --training_data_path "/path/to/training/data" --training_root "/path/to/training/directory"
 ```
