@@ -28,7 +28,7 @@ Please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-012
 ```
 5. Run teacher_student_training.py with proper arguments for student-self-supervised learning. One example is:
 ```
-/path/to/python /path/to/teacher_student_training.py --adjacent_range 10 20 --max_lr 1.0e-3 --min_lr 1.0e-4 --testing_patient_id $counter --student_learn_from_sfm --load_intermediate_data --use_hsv_colorspace --number_epoch 12 --ssl_weight 0.3 --dcl_weight 10.0 --sfl_weight 100.0 --batch_size 8 --num_workers 4 --use_previous_student_model --training_data_path "/path/to/training/data" --training_root "/path/to/training/directory"
+/path/to/python /path/to/teacher_student_training.py --adjacent_range 10 20 --max_lr 1.0e-3 --min_lr 1.0e-4 --testing_patient_id 2 --student_learn_from_sfm --load_intermediate_data --use_hsv_colorspace --number_epoch 12 --ssl_weight 0.3 --dcl_weight 10.0 --sfl_weight 100.0 --batch_size 8 --num_workers 4 --use_previous_student_model --training_data_path "/path/to/training/data" --training_root "/path/to/training/directory"
 ```
 6. Run evaluate.py to generate evaluation results. Apply any rigid registration algorithm to register the predicted point clouds to the corresponding CT model to calculate residual errors (this step may require manual point cloud initialization).
 
