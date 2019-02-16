@@ -1,3 +1,14 @@
+'''
+Author: Xingtong Liu, Ayushi Sinha, Masaru Ishii, Gregory D. Hager, Austin Reiter, Russell H. Taylor, and Mathias Unberath
+
+Copyright (C) 2019 Johns Hopkins University - All Rights Reserved
+You may use, distribute and modify this code under the
+terms of the GNU GENERAL PUBLIC LICENSE Version 3 license for non-commercial usage.
+
+You should have received a copy of the GNU GENERAL PUBLIC LICENSE Version 3 license with
+this file. If not, please write to: xliu89@jh.edu or rht@jhu.edu or unberath@jhu.edu
+'''
+
 import torch
 from torch import nn
 

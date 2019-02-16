@@ -11,6 +11,16 @@ In International Workshop on Computer-Assisted and Robotic Endoscopy 2018 (**Bes
 Please contact [**Xingtong Liu**](http://www.cs.jhu.edu/~xingtongl/) (xliu89@jh.edu) if you have any questions.
 
 Please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) if you use the code here.
+```
+@incollection{liu2018self,
+  title={Self-supervised Learning for Dense Depth Estimation in Monocular Endoscopy},
+  author={Liu, Xingtong and Sinha, Ayushi and Unberath, Mathias and Ishii, Masaru and Hager, Gregory D and Taylor, Russell H and Reiter, Austin},
+  booktitle={OR 2.0 Context-Aware Operating Theaters, Computer Assisted Robotic Endoscopy, Clinical Image-Based Procedures, and Skin Image Analysis},
+  pages={128--138},
+  year={2018},
+  publisher={Springer}
+}
+```
 
 ## Instructions
 
