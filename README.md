@@ -3,7 +3,7 @@
 
 ![](clip_1.gif) ![](clip_2.gif)
 
-*Depth predictions come from a testing patient and camera which are not seen during training. Depth maps are normalized per frame for display purpose*
+*Depth predictions come from a testing patient and camera which are not seen during training. Depth maps are normalized per frame for display purpose.*
 
 
 This codebase implements the system described in the paper:
