@@ -1,5 +1,7 @@
 # Self-Supervised Depth Estimation in Pytorch
 
+
+![](clip_1.gif) ![](clip_2.gif)
 This codebase implements the system described in the paper:
 
 **Self-supervised Learning for Dense Depth Estimation in Monocular Endoscopy**
