@@ -30,26 +30,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset--Evaluation',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--adjacent_range', nargs='+', type=int, help='interval range for a pair of video frames')
     parser.add_argument('--downsampling', type=float, default=4.0,
                         help='image downsampling rate to speed up training and reduce overfitting')
     parser.add_argument('--torchsummary_input_size', nargs='+', type=int,
                         help='input size for torchsummary (analysis purpose only)')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size for testing')
     parser.add_argument('--num_workers', type=int, default=8, help='number of workers for input data loader')
-    parser.add_argument('--dcl_weight', type=float, default=1.0, help='weight for depth consistency loss')
-    parser.add_argument('--sfl_weight', type=float, default=100.0, help='weight for sparse flow loss')
-    parser.add_argument('--ssl_weight', type=float, default=0.3,
-                        help='weight for scale standard deviation loss')
     parser.add_argument('--teacher_depth', type=int, default=7, help='depth of teacher model')
     parser.add_argument('--filter_base', type=int, default=3, help='filter base of teacher model')
     parser.add_argument('--inlier_percentage', type=float, default=0.995,
                         help='percentage of inliers of SfM point clouds (for pruning some outliers)')
-    parser.add_argument('--zero_division_epsilon', type=float, default=1.0e-8, help='epsilon to prevent zero division')
     parser.add_argument('--testing_patient_id', type=int, help='id of the testing patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
-    parser.add_argument('--use_view_indexes_per_point', action='store_true',
-                        help='whether to use view indexes for reconstructing a particular point by SfM')
     parser.add_argument('--visualize_dataset_input', action='store_true',
                         help='whether to visualize input of data loader')
     parser.add_argument('--use_hsv_colorspace', action='store_true',
@@ -69,23 +61,15 @@ if __name__ == '__main__':
     device = torch.device("cuda")
 
     # Hyper-parameters
-    adjacent_range = args.adjacent_range
     downsampling = args.downsampling
     height, width = args.torchsummary_input_size
     batch_size = args.batch_size
     num_workers = args.num_workers
-    depth_consistency_weight = args.dcl_weight
-    sparse_flow_weight = args.sfl_weight
-    scale_std_loss_weight = args.ssl_weight
     teacher_depth = args.teacher_depth
     filter_base = args.filter_base
     inlier_percentage = args.inlier_percentage
-    depth_scaling_epsilon = args.zero_division_epsilon
-    depth_warping_epsilon = args.zero_division_epsilon
-    wsl_epsilon = args.zero_division_epsilon
     which_bag = args.testing_patient_id
     load_intermediate_data = args.load_intermediate_data
-    use_view_indexes_per_point = args.use_view_indexes_per_point
     visualize = args.visualize_dataset_input
     is_hsv = args.use_hsv_colorspace
     training_root = args.training_root
@@ -129,14 +113,14 @@ if __name__ == '__main__':
 
     test_dataset = dataset.SfMDataset(image_file_names=test_filenames,
                                       folder_list=training_folder_list + val_folder_list,
-                                      adjacent_range=adjacent_range, to_augment=True,
+                                      to_augment=True,
                                       transform=test_transforms,
                                       downsampling=downsampling,
                                       net_depth=teacher_depth, inlier_percentage=inlier_percentage,
                                       use_store_data=load_intermediate_data,
                                       store_data_root=precompute_root,
-                                      use_view_indexes_per_point=use_view_indexes_per_point, visualize=visualize,
-                                      phase="train", is_hsv=is_hsv)
+                                      use_view_indexes_per_point=True, visualize=visualize,
+                                      phase="test", is_hsv=is_hsv)
     test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False,
                                               num_workers=batch_size)
 
