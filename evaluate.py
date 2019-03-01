@@ -140,15 +140,6 @@ if __name__ == '__main__':
     test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False,
                                               num_workers=batch_size)
 
-    # Custom layers
-    depth_scaling_layer = models.DepthScalingLayer(epsilon=depth_scaling_epsilon)
-    depth_warping_layer = models.DepthWarpingLayer(epsilon=depth_warping_epsilon)
-    flow_from_depth_layer = models.FlowfromDepthLayer()
-    # Loss functions
-    sparse_masked_l1_loss = losses.SparseMaskedL1Loss()
-    sparse_masked_l1_loss_detector = losses.SparseMaskedL1LossDisplay()
-    scale_invariant_loss = losses.ScaleInvariantLoss()
-    normalized_weighted_masked_l2_loss = losses.NormalizedWeightedMaskedL2Loss()
     # Directories for storing models and results
     model_root = root / "models"
     try:
@@ -191,20 +182,6 @@ if __name__ == '__main__':
     depth_estimation_model_student.eval()
     for param in depth_estimation_model_student.parameters():
         param.requires_grad = False
-    # Update progress bar
-    tq = tqdm.tqdm(total=len(test_loader) * batch_size)
-    # Variable initialization
-    losses = []
-    depth_consistency_losses = []
-    sparse_flow_losses = []
-    scale_std_losses = []
-    mean_loss = 0.0
-    depth_consistency_loss = torch.tensor(0.0).float().cuda()
-    sparse_flow_loss = torch.tensor(0.0).float().cuda()
-    scale_std_loss = torch.tensor(0.0).float().cuda()
-    test_losses = []
-    test_sparse_flow_losses = []
-    test_depth_consistency_losses = []
 
     try:
         for batch, (colors_1, boundaries, intrinsic_matrices,
