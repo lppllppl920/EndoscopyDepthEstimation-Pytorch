@@ -183,12 +183,14 @@ if __name__ == '__main__':
     for param in depth_estimation_model_student.parameters():
         param.requires_grad = False
 
+    # Update progress bar
+    tq = tqdm.tqdm(total=len(test_loader) * batch_size)
     try:
         for batch, (colors_1, boundaries, intrinsic_matrices,
                     image_names) in enumerate(test_loader):
             colors_1, boundaries, intrinsic_matrices = \
                 colors_1.to(device), boundaries.to(device), intrinsic_matrices.to(device)
-            print("Processing batch {}...".format(batch))
+            tq.update(batch_size)
             colors_1 = boundaries * colors_1
             predicted_depth_maps_1 = depth_estimation_model_student(colors_1)
             utils.write_test_output_with_initial_pose(evaluation_root, colors_1, torch.abs(predicted_depth_maps_1), boundaries,
@@ -197,5 +199,9 @@ if __name__ == '__main__':
                                                       translation_dict, rotation_dict, color_mode=cv2.COLORMAP_JET)
 
     except KeyboardInterrupt:
+        tq.close()
         writer.close()
         torch.cuda.empty_cache()
+
+    tq.close()
+    writer.close()
