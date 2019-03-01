@@ -157,7 +157,7 @@ if __name__ == '__main__':
         step = state['step']
         epoch = state['epoch']
         depth_estimation_model_student.load_state_dict(state['model'])
-        print('Restored model, epoch {}, step {:,}'.format(epoch, step))
+        print('Restored model, epoch {}, step {}'.format(epoch, step))
     else:
         print("Student model could not be found")
         raise OSError

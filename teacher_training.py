@@ -195,7 +195,7 @@ if __name__ == '__main__':
             if 'failure' in state:
                 failure_sequences = state['failure']
                 print("failure sequences: ", failure_sequences)
-            print('Restored model, epoch {}, step {:,}'.format(epoch, step))
+            print('Restored model, epoch {}, step {}'.format(epoch, step))
         else:
             print("No previous student model detected")
             raise OSError
