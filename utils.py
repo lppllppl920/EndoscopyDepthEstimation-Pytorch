@@ -47,6 +47,16 @@ def get_color_file_names(root, split_ratio=(0.9, 0.05, 0.05)):
     return image_list[:split_point[0]], image_list[split_point[0]:split_point[1]], image_list[split_point[1]:]
 
 
+def get_test_color_img(img_file_name, start_h, end_h, start_w, end_w, downsampling_factor, is_hsv):
+    img = cv2.imread(img_file_name)
+    downsampled_img = cv2.resize(img, (0, 0), fx=1. / downsampling_factor, fy=1. / downsampling_factor)
+    downsampled_img = downsampled_img[start_h:end_h, start_w:end_w, :]
+    if is_hsv:
+        downsampled_img = cv2.cvtColor(downsampled_img, cv2.COLOR_BGR2HSV_FULL)
+    downsampled_img = np.array(downsampled_img, dtype="float32")
+    return downsampled_img
+
+
 def get_parent_folder_names(root, which_bag):
     training_folder_list = []
     rest_folder_list = []
