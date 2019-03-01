@@ -1167,7 +1167,7 @@ def write_test_output_with_initial_pose(results_root, colors_1, scaled_depth_map
     intrinsics_cpu = intrinsic_matrices.data.cpu().numpy()
 
     for j in range(colors_1.shape[0]):
-        print("processing {0}...".format(image_indexes[j]))
+        print("processing {}...".format(image_indexes[j]))
         color_img = color_inputs_cpu[j]
         pred_depth_img = pred_depths_cpu[j]
 

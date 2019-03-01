@@ -207,97 +207,16 @@ if __name__ == '__main__':
     test_depth_consistency_losses = []
 
     try:
-        for batch, (colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1,
-                    sparse_depth_masks_2,
-                    flows_1,
-                    flows_2, flow_masks_1, flow_masks_2, boundaries, rotations,
-                    rotations_inverse, translations, translations_inverse, intrinsic_matrices,
-                    image_indexes) in enumerate(test_loader):
-            colors_1, colors_2, \
-            sparse_depths_1, sparse_depths_2, sparse_depth_masks_1, sparse_depth_masks_2, flows_1, flows_2, flow_masks_1, \
-            flow_masks_2, \
-            boundaries, rotations, rotations_inverse, translations, translations_inverse, intrinsic_matrices = \
-                colors_1.to(device), colors_2.to(device), \
-                sparse_depths_1.to(device), sparse_depths_2.to(device), \
-                sparse_depth_masks_1.to(device), sparse_depth_masks_2.to(device), flows_1.to(
-                    device), flows_2.to(
-                    device), flow_masks_1.to(device), flow_masks_2.to(device), \
-                boundaries.to(device), rotations.to(device), \
-                rotations_inverse.to(device), translations.to(device), translations_inverse.to(
-                    device), intrinsic_matrices.to(device)
-
-            # Binarize the boundaries
-            boundaries = torch.where(boundaries >= torch.tensor(0.9).float().cuda(),
-                                     torch.tensor(1.0).float().cuda(), torch.tensor(0.0).float().cuda())
-            # Remove invalid regions of color images
+        for batch, (colors_1, boundaries, intrinsic_matrices,
+                    image_names) in enumerate(test_loader):
+            colors_1, boundaries, intrinsic_matrices = \
+                colors_1.to(device), boundaries.to(device), intrinsic_matrices.to(device)
+            print("Processing batch {}...".format(batch))
             colors_1 = boundaries * colors_1
-            colors_2 = boundaries * colors_2
-
-            # Predicted depth from student model
             predicted_depth_maps_1 = depth_estimation_model_student(colors_1)
-            predicted_depth_maps_2 = depth_estimation_model_student(colors_2)
-            scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
-                [torch.abs(predicted_depth_maps_1), sparse_depths_1, sparse_depth_masks_1])
-            scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
-                [torch.abs(predicted_depth_maps_2), sparse_depths_2, sparse_depth_masks_2])
-
-            if sparse_flow_weight > 0.0:
-                # Sparse optical flow loss
-                # Optical flow maps calculated using predicted dense depth maps and camera poses
-                # should agree with the sparse optical flows of feature points from SfM
-                flows_from_depth_1 = flow_from_depth_layer(
-                    [scaled_depth_maps_1, boundaries, translations, rotations,
-                     intrinsic_matrices])
-                flows_from_depth_2 = flow_from_depth_layer(
-                    [scaled_depth_maps_2, boundaries, translations_inverse, rotations_inverse,
-                     intrinsic_matrices])
-                flow_masks_1 = flow_masks_1 * boundaries
-                flow_masks_2 = flow_masks_2 * boundaries
-                flows_1 = flows_1 * boundaries
-                flows_2 = flows_2 * boundaries
-                flows_from_depth_1 = flows_from_depth_1 * boundaries
-                flows_from_depth_2 = flows_from_depth_2 * boundaries
-                # If we do not try to detect any failure case from SfM
-                sparse_flow_loss = 0.5 * sparse_masked_l1_loss(
-                    [flows_1, flows_from_depth_1, flow_masks_1]) + \
-                                  0.5 * sparse_masked_l1_loss(
-                    [flows_2, flows_from_depth_2, flow_masks_2])
-
-            if depth_consistency_weight > 0.0:
-                # Depth consistency loss
-                warped_depth_maps_2_to_1, intersect_masks_1 = depth_warping_layer(
-                    [scaled_depth_maps_1, scaled_depth_maps_2, boundaries, translations, rotations,
-                     intrinsic_matrices])
-                warped_depth_maps_1_to_2, intersect_masks_2 = depth_warping_layer(
-                    [scaled_depth_maps_2, scaled_depth_maps_1, boundaries, translations_inverse,
-                     rotations_inverse,
-                     intrinsic_matrices])
-                depth_consistency_loss = 0.5 * normalized_weighted_masked_l2_loss(
-                    [scaled_depth_maps_1, warped_depth_maps_2_to_1, intersect_masks_1, translations]) + \
-                                         0.5 * normalized_weighted_masked_l2_loss(
-                    [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2, translations])
-
-            loss = depth_consistency_weight * depth_consistency_loss + sparse_flow_weight * sparse_flow_loss
-            test_losses.append(loss.item())
-            test_sparse_flow_losses.append(sparse_flow_weight * sparse_flow_loss.item())
-            test_depth_consistency_losses.append(
-                depth_consistency_weight * depth_consistency_loss.item())
-
-            tq.update(batch_size)
-            tq.set_postfix(loss='{:.5f} {:.5f}'.format(np.mean(test_losses), loss.item()),
-                           loss_depth_consistency='{:.5f} {:.5f}'.format(
-                               np.mean(test_depth_consistency_losses),
-                               depth_consistency_weight * depth_consistency_loss.item()),
-                           loss_sparse_flow='{:.5f} {:.5f}'.format(np.mean(test_sparse_flow_losses),
-                                                                  sparse_flow_weight * sparse_flow_loss.item()))
-            # TensorboardX
-            writer.add_scalars('Test', {'overall': loss.item(),
-                                             'depth consistency': sparse_flow_weight * sparse_flow_loss.item(),
-                                             'sparse opt': sparse_flow_weight * sparse_flow_loss.item()}, batch)
-
-            utils.write_test_output_with_initial_pose(evaluation_root, colors_1, scaled_depth_maps_1, boundaries,
+            utils.write_test_output_with_initial_pose(evaluation_root, colors_1, torch.abs(predicted_depth_maps_1), boundaries,
                                                       intrinsic_matrices, is_hsv,
-                                                      image_indexes,
+                                                      image_names,
                                                       translation_dict, rotation_dict, color_mode=cv2.COLORMAP_JET)
 
     except KeyboardInterrupt:
