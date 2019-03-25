@@ -501,7 +501,6 @@ def _depth_warping(depth_maps_1, depth_maps_2, img_masks, translation_vectors, r
         depth_maps_1,
         intermediate_result.narrow(dim=-1, start=2, length=1).view(-1, height,
                                                                    width, 1))
-
     # expand operation doesn't allocate new memory (repeat does)
     depth_maps_2_calculate = torch.where(img_masks > 0.5, depth_maps_2_calculate, epsilon)
     depth_maps_2_calculate = torch.where(depth_maps_2_calculate > 0.0, depth_maps_2_calculate, epsilon)
