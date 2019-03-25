@@ -14,9 +14,11 @@ Xingtong Liu, Ayushi Sinha, Mathias Unberath, Masaru Ishii, Gregory D. Hager, Ru
 
 In International Workshop on Computer-Assisted and Robotic Endoscopy 2018 (**Best paper award & Best presentation award**)
 
+The journal version of this paper has been submitted to IEEE Transactions on Medical Imaging under review.
+
 Please contact [**Xingtong Liu**](http://www.cs.jhu.edu/~xingtongl/) (xliu89@jh.edu) if you have any questions.
 
-Please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) if you use the code here.
+Please cite [CARE Workshop](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) or [TMI Submission Arxiv Preprint](https://arxiv.org/abs/1902.07766) if you use the code here.
 ```
 @incollection{liu2018self,
   title={Self-supervised Learning for Dense Depth Estimation in Monocular Endoscopy},
@@ -28,6 +30,25 @@ Please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-012
 }
 ```
 
+```
+@ARTICLE{2019arXiv190207766L,
+       author = {{Liu}, Xingtong and {Sinha}, Ayushi and {Ishii}, Masaru and
+         {Hager}, Gregory D. and {Reiter}, Austin and {Taylor}, Russell H. and
+         {Unberath}, Mathias},
+        title = "{Self-supervised Learning for Dense Depth Estimation in Monocular Endoscopy}",
+      journal = {arXiv e-prints},
+     keywords = {Computer Science - Computer Vision and Pattern Recognition, Statistics - Machine Learning},
+         year = "2019",
+        month = "Feb",
+          eid = {arXiv:1902.07766},
+        pages = {arXiv:1902.07766},
+archivePrefix = {arXiv},
+       eprint = {1902.07766},
+ primaryClass = {cs.CV},
+       adsurl = {https://ui.adsabs.harvard.edu/\#abs/2019arXiv190207766L},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+```
 ## Instructions
 
 1. Install all necessary python packages: Pytorch, OpenCV, numpy, tqdm, pathlib, torchsummary, tensorboardX, albumentations, argparse, pickle, plyfile, yaml, datetime, shutil, matplotlib
@@ -54,4 +75,7 @@ Please cite [this paper](https://link.springer.com/chapter/10.1007/978-3-030-012
 This code is only experimental and not ready for clinical applications.
 
 Authors are not responsible for any accidents related to this repository.
+
+This code is only allowed for non-commercial usage.
+
 

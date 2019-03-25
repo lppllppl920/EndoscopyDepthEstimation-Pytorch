@@ -328,7 +328,7 @@ def _bilinear_interpolate(im, x, y, padding_mode="zeros"):
     grid = torch.cat([torch.tensor(2.0).float().cuda() *
                       (x.view(num_batch, height, width, 1) / torch.tensor(width).float().cuda())
                       - torch.tensor(1.0).float().cuda(), torch.tensor(2.0).float().cuda() * (
-                              y.view(num_batch, height, width, 1) / torch.tensor(width).float().cuda()) - torch.tensor(
+                              y.view(num_batch, height, width, 1) / torch.tensor(height).float().cuda()) - torch.tensor(
         1.0).float().cuda()], dim=-1)
 
     return torch.nn.functional.grid_sample(input=im.permute(0, 3, 1, 2), grid=grid, mode='bilinear',
