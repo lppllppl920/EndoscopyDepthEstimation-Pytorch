@@ -421,17 +421,18 @@ class SfMDataset(Dataset):
 
             if self.to_augment:
                 if self.phase == 'train':
-                    if self.is_hsv:
-                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1), cv2.COLOR_HSV2BGR_FULL)
-                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2), cv2.COLOR_HSV2BGR_FULL)
-                    # Data augmentation
-                    color_img_1 = self.transform(image=color_img_1)['image']
-                    color_img_2 = self.transform(image=color_img_2)['image']
-                    if self.is_hsv:
-                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1),
-                                                   cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
-                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2),
-                                                   cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
+                    if self.transform is not None:
+                        if self.is_hsv:
+                            color_img_1 = cv2.cvtColor(np.uint8(color_img_1), cv2.COLOR_HSV2BGR_FULL)
+                            color_img_2 = cv2.cvtColor(np.uint8(color_img_2), cv2.COLOR_HSV2BGR_FULL)
+                        # Data augmentation
+                        color_img_1 = self.transform(image=color_img_1)['image']
+                        color_img_2 = self.transform(image=color_img_2)['image']
+                        if self.is_hsv:
+                            color_img_1 = cv2.cvtColor(np.uint8(color_img_1),
+                                                       cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
+                            color_img_2 = cv2.cvtColor(np.uint8(color_img_2),
+                                                       cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
                     # Normalize
                     color_img_1 = self.normalize(image=color_img_1)['image']
                     color_img_2 = self.normalize(image=color_img_2)['image']

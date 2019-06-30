@@ -820,14 +820,14 @@ def write_point_cloud(path, point_cloud):
     return
 
 
-def display_training_output(idx, step, writer, colors_1, scaled_depth_maps_1):
+def display_output(idx, step, writer, colors_1, scaled_depth_maps_1, phase):
     colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
     colors_display_hsv = np.moveaxis(colors_display.data.cpu().numpy(),
                                      source=[0, 1, 2], destination=[2, 0, 1])
     colors_display_hsv[colors_display_hsv < 0.0] = 0.0
     colors_display_hsv[colors_display_hsv > 1.0] = 1.0
     colors_display_hsv = cv2.cvtColor(colors_display_hsv, cv2.COLOR_HSV2RGB_FULL)
-    writer.add_image('Training/Images/Color_' + str(idx),
+    writer.add_image(phase + '/Images/Color_' + str(idx),
                      np.moveaxis(colors_display_hsv, source=[0, 1, 2], destination=[1, 2, 0]), step)
 
     depths_display = vutils.make_grid(scaled_depth_maps_1, normalize=True, scale_each=True)
@@ -835,7 +835,7 @@ def display_training_output(idx, step, writer, colors_1, scaled_depth_maps_1):
                                                                       source=[0, 1, 2], destination=[2, 0, 1])),
                                            cv2.COLORMAP_HOT)
     depths_display_hsv = cv2.cvtColor(depths_display_hsv, cv2.COLOR_BGR2RGB)
-    writer.add_image('Training/Images/Depth_' + str(idx),
+    writer.add_image(phase + '/Images/Depth_' + str(idx),
                      np.moveaxis(depths_display_hsv, source=[0, 1, 2], destination=[1, 2, 0]), step)
 
     return colors_display_hsv, depths_display_hsv
