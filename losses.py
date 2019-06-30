@@ -43,9 +43,13 @@ class NormalizedWeightedMaskedL2Loss(nn.Module):
 
         translations = translations.view(-1, 3, 1)
         translation_norms = torch.sqrt(torch.sum(translations * translations, dim=(1, 2))).view(-1)
-        translation_weights = (torch.tensor(1.0).float().cuda() / (torch.tensor(1.0e-8).float().cuda() + translation_norms)).view(-1)
+        translation_weights = (
+                torch.tensor(1.0).float().cuda() / (torch.tensor(1.0e-8).float().cuda() + translation_norms)).view(
+            -1)
         loss = torch.sum(intersect_masks * (depth_maps - warped_depth_maps) * (depth_maps - warped_depth_maps),
-                         dim=(1, 2, 3), keepdim=False) / (0.5 * torch.sum(intersect_masks * (depth_maps * depth_maps + warped_depth_maps * warped_depth_maps), dim=(1, 2, 3), keepdim=False) + self.epsilon)
+                         dim=(1, 2, 3), keepdim=False) / (0.5 * torch.sum(
+            intersect_masks * (depth_maps * depth_maps + warped_depth_maps * warped_depth_maps), dim=(1, 2, 3),
+            keepdim=False) + self.epsilon)
         loss = torch.sum(loss * translation_weights) / torch.sum(translation_weights)
         return loss
 
@@ -70,7 +74,8 @@ class SparseMaskedL1LossDisplay(nn.Module):
     def forward(self, x):
         flows, flows_from_depth, sparse_masks = x
         loss = torch.sum(sparse_masks * torch.abs(flows - flows_from_depth),
-                         dim=(1, 2, 3), keepdim=False) / (self.epsilon + torch.sum(sparse_masks, dim=(1, 2, 3), keepdim=False))
+                         dim=(1, 2, 3), keepdim=False) / (
+                       self.epsilon + torch.sum(sparse_masks, dim=(1, 2, 3), keepdim=False))
         return loss
 
 
@@ -83,4 +88,20 @@ class MaskedL1Loss(nn.Module):
         images, twice_warped_images, intersect_masks = x
         loss = torch.sum(intersect_masks * torch.abs(images - twice_warped_images), dim=(1, 2, 3)) / (
                 self.epsilon + torch.sum(intersect_masks, dim=(1, 2, 3)))
+        return torch.mean(loss)
+
+
+class NormalizedL2Loss(nn.Module):
+    def __init__(self):
+        super(NormalizedL2Loss, self).__init__()
+
+    def forward(self, x):
+        depth_maps, warped_depth_maps, intersect_masks = x
+
+        mean_value = torch.sum(depth_maps, dim=(1, 2, 3), keepdim=False) / torch.sum(intersect_masks, dim=(1, 2, 3),
+                                                                                     keepdim=False)
+        loss = torch.sum(intersect_masks * (depth_maps - warped_depth_maps) * (depth_maps - warped_depth_maps),
+                         dim=(1, 2, 3), keepdim=False) / (0.5 * torch.sum(
+            intersect_masks * (depth_maps * depth_maps + warped_depth_maps * warped_depth_maps), dim=(1, 2, 3),
+            keepdim=False) + 1.0e-3 * mean_value)
         return torch.mean(loss)
