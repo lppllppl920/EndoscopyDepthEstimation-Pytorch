@@ -302,8 +302,8 @@ def get_contaminated_point_list(imgs, point_cloud, mask_boundary, inlier_percent
                 round_v = int(round(point_projected_undistorted[1]))
 
                 # We will treat this point as valid if it is projected onto the mask region
-                if 0 <= round_u < width and 0 <= round_v < height:
-                    if mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
+                if 0 <= round_u < width and 0 <= round_v < height and \
+                        mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
                         point_to_camera_distance_2 = np.dot(point_3d_position_camera[:3], point_3d_position_camera[:3])
                         sanity_array.append(point_to_camera_distance_2 * img_hsv[round_v, round_u, 2])
 
@@ -354,8 +354,8 @@ def get_contaminated_point_list(imgs, point_cloud, mask_boundary, inlier_percent
                     round_u = int(round(point_projected_undistorted[0]))
                     round_v = int(round(point_projected_undistorted[1]))
 
-                    if 0 <= round_u < width and 0 <= round_v < height:
-                        if mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
+                    if 0 <= round_u < width and 0 <= round_v < height and \
+                            mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
                             point_to_camera_distance_2 = np.dot(point_3d_position_camera[:3],
                                                                 point_3d_position_camera[:3])
                             sanity_value = point_to_camera_distance_2 * img_hsv[round_v, round_u, 2]
@@ -548,8 +548,8 @@ def get_torch_training_data(pair_images, pair_extrinsics, pair_projections, pair
                 round_u = int(round(point_projected_undistorted[0]))
                 round_v = int(round(point_projected_undistorted[1]))
                 if view_indexes_per_point[j][visible_view_indexes.index(pair_indexes[i])] > 0.5:
-                    if 0 <= round_u < width and 0 <= round_v < height:
-                        if mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
+                    if 0 <= round_u < width and 0 <= round_v < height and \
+                            mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
                             mask_img[round_v][
                                 round_u] = 1.0 - np.exp(-appearing_count_per_point[j, 0] / count_weight)
                             masked_depth_img[round_v][round_u] = point_3d_position_camera[2]
@@ -573,9 +573,8 @@ def get_torch_training_data(pair_images, pair_extrinsics, pair_projections, pair
 
                 round_u = int(round(point_projected_undistorted[0]))
                 round_v = int(round(point_projected_undistorted[1]))
-                if 0 <= round_u < width and 0 <= round_v < height:
-                    if mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
-                        # TODO: Binary mask only for depth scaling
+                if 0 <= round_u < width and 0 <= round_v < height and \
+                        mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
                         mask_img[round_v][round_u] = 1.0 - np.exp(-appearing_count_per_point[j, 0] / count_weight)
                         masked_depth_img[round_v][round_u] = point_3d_position_camera[2]
                         if visualize:
