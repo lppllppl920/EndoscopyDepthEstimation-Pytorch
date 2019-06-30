@@ -260,114 +260,108 @@ def get_color_imgs(prefix_seq, visible_view_indexes, start_h, end_h, start_w, en
     return imgs
 
 
-def get_contaminated_point_list(imgs, point_cloud, mask_boundary, inlier_percentage, projection_matrices,
+def compute_sanity_threshold(sanity_array, inlier_percentage):
+    # Use histogram to cluster into different contaminated levels
+    hist, bin_edges = np.histogram(sanity_array, bins=np.arange(1000) * np.max(sanity_array) / 1000.0,
+                                   density=True)
+    histogram_percentage = hist * np.diff(bin_edges)
+    percentage = inlier_percentage
+    # Let's assume there are a certain percent of points in each frame that are not contaminated
+    # Get sanity threshold from counting histogram bins
+    max_index = np.argmax(histogram_percentage)
+    histogram_sum = histogram_percentage[max_index]
+    pos_counter = 1
+    neg_counter = 1
+    # Assume the sanity value is a one-peak distribution
+    while True:
+        if max_index + pos_counter < len(histogram_percentage):
+            histogram_sum = histogram_sum + histogram_percentage[max_index + pos_counter]
+            pos_counter = pos_counter + 1
+            if histogram_sum >= percentage:
+                sanity_threshold_max = bin_edges[max_index + pos_counter]
+                sanity_threshold_min = bin_edges[max_index - neg_counter + 1]
+                break
+
+        if max_index - neg_counter >= 0:
+            histogram_sum = histogram_sum + histogram_percentage[max_index - neg_counter]
+            neg_counter = neg_counter + 1
+            if histogram_sum >= percentage:
+                sanity_threshold_max = bin_edges[max_index + pos_counter]
+                sanity_threshold_min = bin_edges[max_index - neg_counter + 1]
+                break
+
+        if max_index + pos_counter >= len(histogram_percentage) and max_index - neg_counter < 0:
+            sanity_threshold_max = np.max(bin_edges)
+            sanity_threshold_min = np.min(bin_edges)
+            break
+    return sanity_threshold_min, sanity_threshold_max
+
+
+def get_contaminated_point_list(imgs, point_cloud, view_indexes_per_point, mask_boundary, inlier_percentage,
+                                projection_matrices,
                                 extrinsic_matrices, is_hsv):
-    contaminated_point_cloud_indexes = []
-    if 0.0 < inlier_percentage < 1.0:
-        point_cloud_contamination_accumulator = np.zeros(len(point_cloud))
-        point_cloud_appearance_count = np.zeros(len(point_cloud))
-        height, width, channel = imgs[0].shape
-        sanity_array = []
-        valid_frame_count = 0
-        for i in range(len(projection_matrices)):
-            img = imgs[i]
-            projection_matrix = projection_matrices[i]
-            extrinsic_matrix = extrinsic_matrices[i]
+    array_3D_points = np.asarray(point_cloud).reshape((-1, 4))
+    if inlier_percentage <= 0.0 or inlier_percentage >= 1.0:
+        return list()
 
-            img = np.array(img, dtype=np.float32)
-            img = img / 255.0
+    point_cloud_contamination_accumulator = np.zeros(array_3D_points.shape[0], dtype=np.int32)
+    point_cloud_appearance_count = np.zeros(array_3D_points.shape[0], dtype=np.int32)
+    height, width, channel = imgs[0].shape
+    valid_frame_count = 0
+    mask_boundary = mask_boundary.reshape((-1, 1))
+    for i in range(len(projection_matrices)):
+        img = imgs[i]
+        projection_matrix = projection_matrices[i]
+        extrinsic_matrix = extrinsic_matrices[i]
+        img = np.array(img, dtype=np.float32) / 255.0
+        # imgs might be in HSV or BGR colorspace depending on the settings beyond this function
+        if not is_hsv:
+            img_filtered = cv2.bilateralFilter(src=img, d=7, sigmaColor=25, sigmaSpace=25)
+            img_hsv = cv2.cvtColor(img_filtered, cv2.COLOR_BGR2HSV_FULL)
+        else:
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_HSV2BGR_FULL)
+            img_filtered = cv2.bilateralFilter(src=img_bgr, d=7, sigmaColor=25, sigmaSpace=25)
+            img_hsv = cv2.cvtColor(img_filtered, cv2.COLOR_BGR2HSV_FULL)
 
-            # imgs might be in HSV or BGR colorspace depending on the settings beyond this function
-            if not is_hsv:
-                img_filtered = cv2.bilateralFilter(src=img, d=7, sigmaColor=25, sigmaSpace=25)
-                img_hsv = cv2.cvtColor(img_filtered, cv2.COLOR_BGR2HSV_FULL)
-            else:
-                img_bgr = cv2.cvtColor(img, cv2.COLOR_HSV2BGR_FULL)
-                img_filtered = cv2.bilateralFilter(src=img_bgr, d=7, sigmaColor=25, sigmaSpace=25)
-                img_hsv = cv2.cvtColor(img_filtered, cv2.COLOR_BGR2HSV_FULL)
+        view_indexes_frame = np.asarray(view_indexes_per_point[:, i]).reshape((-1))
+        visible_point_indexes = np.where(view_indexes_frame > 0.5)
+        visible_point_indexes = visible_point_indexes[0]
+        points_3D_camera = np.einsum('ij,mj->mi', extrinsic_matrix, array_3D_points)
+        points_3D_camera = points_3D_camera / points_3D_camera[:, 3].reshape((-1, 1))
 
-            for j in range(len(point_cloud)):
-                point_3d_position = np.asarray(point_cloud[j])
-                point_3d_position_camera = np.asarray(extrinsic_matrix).dot(point_3d_position)
-                point_3d_position_camera = point_3d_position_camera / point_3d_position_camera[3]
-                point_3d_position_camera = np.reshape(point_3d_position_camera[:3], (3,))
+        points_2D_image = np.einsum('ij,mj->mi', projection_matrix, array_3D_points)
+        points_2D_image = points_2D_image / points_2D_image[:, 2].reshape((-1, 1))
 
-                point_projected_undistorted = np.asarray(projection_matrix).dot(point_3d_position)
-                point_projected_undistorted = point_projected_undistorted / point_projected_undistorted[2]
+        visible_points_2D_image = points_2D_image[visible_point_indexes, :].reshape((-1, 3))
+        visible_points_3D_camera = points_3D_camera[visible_point_indexes, :].reshape((-1, 4))
+        indexes = np.where((visible_points_2D_image[:, 0] <= width - 1) & (visible_points_2D_image[:, 0] >= 0) &
+                           (visible_points_2D_image[:, 1] <= height - 1) & (visible_points_2D_image[:, 1] >= 0)
+                           & (visible_points_3D_camera[:, 2] > 0))
+        indexes = indexes[0]
+        in_image_point_1D_locations = (np.round(visible_points_2D_image[indexes, 0]) +
+                                       np.round(visible_points_2D_image[indexes, 1]) * width).astype(
+            np.int32).reshape((-1))
+        temp_mask = mask_boundary[in_image_point_1D_locations, :]
+        indexes_2 = np.where(temp_mask[:, 0] == 255)
+        indexes_2 = indexes_2[0]
+        in_mask_point_1D_locations = in_image_point_1D_locations[indexes_2]
+        points_depth = visible_points_3D_camera[indexes[indexes_2], 2]
+        img_hsv = img_hsv.reshape((-1, 3))
+        points_brightness = img_hsv[in_mask_point_1D_locations, 2]
+        sanity_array = points_depth ** 2 * points_brightness
+        point_cloud_appearance_count[visible_point_indexes[indexes[indexes_2]]] += 1
+        if sanity_array.shape[0] < 2:
+            continue
+        valid_frame_count += 1
+        sanity_threshold_min, sanity_threshold_max = compute_sanity_threshold(sanity_array, inlier_percentage)
+        indexes_3 = np.where((sanity_array <= sanity_threshold_min) | (sanity_array >= sanity_threshold_max))
+        indexes_3 = indexes_3[0]
+        point_cloud_contamination_accumulator[visible_point_indexes[indexes[indexes_2[indexes_3]]]] += 1
 
-                if np.isnan(point_projected_undistorted[0]) or np.isnan(point_projected_undistorted[1]):
-                    continue
-
-                round_u = int(round(point_projected_undistorted[0]))
-                round_v = int(round(point_projected_undistorted[1]))
-
-                # We will treat this point as valid if it is projected onto the mask region
-                if 0 <= round_u < width and 0 <= round_v < height and \
-                        mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
-                        point_to_camera_distance_2 = np.dot(point_3d_position_camera[:3], point_3d_position_camera[:3])
-                        sanity_array.append(point_to_camera_distance_2 * img_hsv[round_v, round_u, 2])
-
-            if len(sanity_array) != 0:
-                valid_frame_count += 1
-                # Use histogram to cluster into different contaminated levels
-                hist, bin_edges = np.histogram(sanity_array, bins=np.arange(1000) * np.max(sanity_array) / 1000.0,
-                                               density=True)
-                histogram_percentage = hist * np.diff(bin_edges)
-                percentage = inlier_percentage
-                # Let's assume there are a certain percent of points in each frame that are not contaminated
-                # Get sanity threshold from counting histogram bins
-                max_index = np.argmax(histogram_percentage)
-                histogram_sum = histogram_percentage[max_index]
-                pos_counter = 1
-                neg_counter = 1
-
-                # Assume the sanity value is a one-peak distribution
-                while True:
-                    if max_index + pos_counter < len(histogram_percentage):
-                        histogram_sum = histogram_sum + histogram_percentage[max_index + pos_counter]
-                        pos_counter = pos_counter + 1
-                        if histogram_sum >= percentage:
-                            sanity_threshold_max = bin_edges[max_index + pos_counter]
-                            sanity_threshold_min = bin_edges[max_index - neg_counter + 1]
-                            break
-
-                    if max_index - neg_counter >= 0:
-                        histogram_sum = histogram_sum + histogram_percentage[max_index - neg_counter]
-                        neg_counter = neg_counter + 1
-                        if histogram_sum >= percentage:
-                            sanity_threshold_max = bin_edges[max_index + pos_counter]
-                            sanity_threshold_min = bin_edges[max_index - neg_counter + 1]
-                            break
-
-                for j in range(len(point_cloud)):
-                    point_3d_position = np.asarray(point_cloud[j])
-                    point_3d_position_camera = np.asarray(extrinsic_matrix).dot(point_3d_position)
-                    point_3d_position_camera = point_3d_position_camera / point_3d_position_camera[3]
-                    point_3d_position_camera = np.reshape(point_3d_position_camera[:3], (3,))
-
-                    point_projected_undistorted = np.asarray(projection_matrix).dot(point_3d_position)
-                    point_projected_undistorted = point_projected_undistorted / point_projected_undistorted[2]
-
-                    if np.isnan(point_projected_undistorted[0]) or np.isnan(point_projected_undistorted[1]):
-                        continue
-
-                    round_u = int(round(point_projected_undistorted[0]))
-                    round_v = int(round(point_projected_undistorted[1]))
-
-                    if 0 <= round_u < width and 0 <= round_v < height and \
-                            mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
-                            point_to_camera_distance_2 = np.dot(point_3d_position_camera[:3],
-                                                                point_3d_position_camera[:3])
-                            sanity_value = point_to_camera_distance_2 * img_hsv[round_v, round_u, 2]
-                            point_cloud_appearance_count[j] += 1
-                            if sanity_value <= sanity_threshold_min or sanity_value >= sanity_threshold_max:
-                                point_cloud_contamination_accumulator[j] += 1
-
-        for i in range(point_cloud_contamination_accumulator.shape[0]):
-            if point_cloud_contamination_accumulator[i] >= point_cloud_appearance_count[i] // 2:
-                contaminated_point_cloud_indexes.append(i)
-
-    print("{:d} points eliminated".format(len(contaminated_point_cloud_indexes)))
+    contaminated_point_cloud_indexes = np.where(point_cloud_contamination_accumulator >=
+                                                point_cloud_appearance_count / 2)
+    contaminated_point_cloud_indexes = contaminated_point_cloud_indexes[0]
+    print("{:d} points eliminated".format(contaminated_point_cloud_indexes.shape[0]))
     return contaminated_point_cloud_indexes
 
 
@@ -550,12 +544,12 @@ def get_torch_training_data(pair_images, pair_extrinsics, pair_projections, pair
                 if view_indexes_per_point[j][visible_view_indexes.index(pair_indexes[i])] > 0.5:
                     if 0 <= round_u < width and 0 <= round_v < height and \
                             mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
-                            mask_img[round_v][
-                                round_u] = 1.0 - np.exp(-appearing_count_per_point[j, 0] / count_weight)
-                            masked_depth_img[round_v][round_u] = point_3d_position_camera[2]
-                            if visualize:
-                                cv2.circle(display_img, (round_u, round_v), 1,
-                                           (0, int(mask_img[round_v][round_u] * 255), 0))
+                        mask_img[round_v][
+                            round_u] = 1.0 - np.exp(-appearing_count_per_point[j, 0] / count_weight)
+                        masked_depth_img[round_v][round_u] = point_3d_position_camera[2]
+                        if visualize:
+                            cv2.circle(display_img, (round_u, round_v), 1,
+                                       (0, int(mask_img[round_v][round_u] * 255), 0))
         else:
             for j in range(len(point_cloud)):
                 if j in contamination_point_list:
@@ -575,11 +569,11 @@ def get_torch_training_data(pair_images, pair_extrinsics, pair_projections, pair
                 round_v = int(round(point_projected_undistorted[1]))
                 if 0 <= round_u < width and 0 <= round_v < height and \
                         mask_boundary[round_v, round_u] > 220 and point_3d_position_camera[2] > 0.0:
-                        mask_img[round_v][round_u] = 1.0 - np.exp(-appearing_count_per_point[j, 0] / count_weight)
-                        masked_depth_img[round_v][round_u] = point_3d_position_camera[2]
-                        if visualize:
-                            cv2.circle(display_img, (round_u, round_v), 1,
-                                       (0, int(mask_img[round_v][round_u] * 255), 0))
+                    mask_img[round_v][round_u] = 1.0 - np.exp(-appearing_count_per_point[j, 0] / count_weight)
+                    masked_depth_img[round_v][round_u] = point_3d_position_camera[2]
+                    if visualize:
+                        cv2.circle(display_img, (round_u, round_v), 1,
+                                   (0, int(mask_img[round_v][round_u] * 255), 0))
         if visualize:
             cv2.imshow("img", np.uint8(display_img))
             cv2.waitKey()
@@ -1219,10 +1213,10 @@ def quaternion_matrix(quaternion):
     q *= np.sqrt(2.0 / n)
     q = np.outer(q, q)
     return np.array([
-        [1.0-q[2, 2]-q[3, 3],     q[1, 2]-q[3, 0],     q[1, 3]+q[2, 0], 0.0],
-        [    q[1, 2]+q[3, 0], 1.0-q[1, 1]-q[3, 3],     q[2, 3]-q[1, 0], 0.0],
-        [    q[1, 3]-q[2, 0],     q[2, 3]+q[1, 0], 1.0-q[1, 1]-q[2, 2], 0.0],
-        [                0.0,                 0.0,                 0.0, 1.0]])
+        [1.0 - q[2, 2] - q[3, 3], q[1, 2] - q[3, 0], q[1, 3] + q[2, 0], 0.0],
+        [q[1, 2] + q[3, 0], 1.0 - q[1, 1] - q[3, 3], q[2, 3] - q[1, 0], 0.0],
+        [q[1, 3] - q[2, 0], q[2, 3] + q[1, 0], 1.0 - q[1, 1] - q[2, 2], 0.0],
+        [0.0, 0.0, 0.0, 1.0]])
 
 
 def read_initial_pose_file(file_path):
@@ -1250,7 +1244,8 @@ def get_filenames_from_frame_indexes(bag_root, frame_index_array):
     for index in frame_index_array:
         temp = list(bag_root.glob('*/*{:08d}.jpg'.format(index)))
         if len(temp) == 0:
-            print index
+            print
+            index
         else:
             test_image_list.append(temp[0])
     test_image_list.sort()
@@ -1328,7 +1323,8 @@ def learn_from_teacher(boundaries, colors_1, colors_2, depth_estimation_model_te
 
 
 def learn_from_sfm(colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1, sparse_depth_masks_2,
-                   depth_estimation_model_student, depth_scaling_layer, sparse_flow_weight, flow_from_depth_layer, boundaries,
+                   depth_estimation_model_student, depth_scaling_layer, sparse_flow_weight, flow_from_depth_layer,
+                   boundaries,
                    translations, rotations, intrinsic_matrices, translations_inverse, rotations_inverse,
                    flow_masks_1, flow_masks_2, flows_1, flows_2, enable_failure_detection,
                    sparse_masked_l1_loss, depth_consistency_weight, depth_warping_layer, masked_log_l2_loss,
@@ -1372,7 +1368,7 @@ def learn_from_sfm(colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_
         if not enable_failure_detection:
             sparse_flow_loss = 0.5 * sparse_masked_l1_loss(
                 [flows_1, flows_from_depth_1, flow_masks_1]) + \
-                              0.5 * sparse_masked_l1_loss(
+                               0.5 * sparse_masked_l1_loss(
                 [flows_2, flows_from_depth_2, flow_masks_2])
 
     if depth_consistency_weight > 0.0:
@@ -1407,15 +1403,15 @@ def learn_from_sfm(colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_
     # Bootstrapping data cleaning method
     if enable_failure_detection:
         failure_indexes_1, sparse_flow_losses_1 = outlier_detection_processing(failure_threshold,
-                                                                              sparse_masked_l1_loss_detector,
-                                                                              flows_1,
-                                                                              flows_from_depth_1,
-                                                                              flow_masks_1)
+                                                                               sparse_masked_l1_loss_detector,
+                                                                               flows_1,
+                                                                               flows_from_depth_1,
+                                                                               flow_masks_1)
         failure_indexes_2, sparse_flow_losses_2 = outlier_detection_processing(failure_threshold,
-                                                                              sparse_masked_l1_loss_detector,
-                                                                              flows_2,
-                                                                              flows_from_depth_2,
-                                                                              flow_masks_2)
+                                                                               sparse_masked_l1_loss_detector,
+                                                                               flows_2,
+                                                                               flows_from_depth_2,
+                                                                               flow_masks_2)
         for index in failure_indexes_1:
             epoch_failure_sequences[folders[index]] = 1
             sparse_flow_losses_1[index] = torch.tensor(0.0).float().cuda()
@@ -1432,7 +1428,7 @@ def learn_from_sfm(colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_
                 batch_size - len(failure_indexes_2)).float().cuda())
         else:
             sparse_flow_loss = torch.tensor(0.5).float().cuda() * torch.mean(sparse_flow_losses_1) + \
-                torch.tensor(0.5).float().cuda() * torch.mean(sparse_flow_losses_2)
+                               torch.tensor(0.5).float().cuda() * torch.mean(sparse_flow_losses_2)
 
         loss = depth_consistency_weight * depth_consistency_loss + sparse_flow_weight * sparse_flow_loss + scale_std_loss_weight * scale_std_loss
     else:
@@ -1443,7 +1439,8 @@ def learn_from_sfm(colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_
 
 
 def save_student_model(model_root, depth_estimation_model_student, optimizer, epoch,
-                       step, failure_sequences, model_path_student, validation_losses, best_validation_losses, save_best_only):
+                       step, failure_sequences, model_path_student, validation_losses, best_validation_losses,
+                       save_best_only):
     model_path_epoch_student = model_root / 'checkpoint_student_model_epoch_{epoch}.pt'.format(epoch=epoch)
     validation_losses = np.array(validation_losses)
     best_validation_losses = np.array(best_validation_losses)
@@ -1477,7 +1474,8 @@ def save_student_model(model_root, depth_estimation_model_student, optimizer, ep
 
 
 def save_teacher_model(model_root, depth_estimation_model_teacher, optimizer, epoch,
-                       step, failure_sequences, model_path_teacher, validation_losses, best_validation_losses, save_best_only):
+                       step, failure_sequences, model_path_teacher, validation_losses, best_validation_losses,
+                       save_best_only):
     model_path_epoch_teacher = model_root / 'checkpoint_teacher_model_epoch_{epoch}.pt'.format(epoch=epoch)
     validation_losses = np.array(validation_losses)
     best_validation_losses = np.array(best_validation_losses)
@@ -1582,7 +1580,7 @@ def network_validation(writer, validation_loader, batch_size, epoch, depth_estim
             # If we do not try to detect any failure case from SfM
             sparse_flow_loss = 0.5 * sparse_masked_l1_loss(
                 [flows_1, flows_from_depth_1, flow_masks_1]) + \
-                              0.5 * sparse_masked_l1_loss(
+                               0.5 * sparse_masked_l1_loss(
                 [flows_2, flows_from_depth_2, flow_masks_2])
 
         if depth_consistency_weight > 0.0:
@@ -1612,7 +1610,7 @@ def network_validation(writer, validation_loader, batch_size, epoch, depth_estim
                                np.mean(validation_depth_consistency_losses),
                                depth_consistency_weight * depth_consistency_loss.item()),
                            loss_sparse_flow='{:.5f} {:.5f}'.format(np.mean(validation_sparse_flow_losses),
-                                                                  sparse_flow_weight * sparse_flow_loss.item()))
+                                                                   sparse_flow_weight * sparse_flow_loss.item()))
         tq.update(batch_size)
 
         if batch == sample_batch:
@@ -1662,7 +1660,8 @@ def read_pose_corresponding_image_indexes_and_time_difference(file_path):
             pose_corresponding_video_frame_index_array.append(int(array[0]))
             pose_corresponding_video_frame_time_difference_array.append(int(array[1]))
     pose_corresponding_video_frame_index_array = np.array(pose_corresponding_video_frame_index_array, dtype=np.int32)
-    pose_corresponding_video_frame_time_difference_array = np.array(pose_corresponding_video_frame_time_difference_array, dtype=np.int32)
+    pose_corresponding_video_frame_time_difference_array = np.array(
+        pose_corresponding_video_frame_time_difference_array, dtype=np.int32)
     return pose_corresponding_video_frame_index_array, pose_corresponding_video_frame_time_difference_array
 
 
@@ -1678,7 +1677,8 @@ def synchronize_selected_calibration_poses(root):
     # Find the most likely camera position
     for calibration_image_name in selected_calibration_image_name_list:
         calibration_image_name = str(calibration_image_name)
-        difference_array = pose_corresponding_video_frame_index_array.astype(np.int32) - int(calibration_image_name[-12:-4])
+        difference_array = pose_corresponding_video_frame_index_array.astype(np.int32) - int(
+            calibration_image_name[-12:-4])
         # Find if there are some zeros in it
         zero_indexes, = np.where(difference_array == 0)
 
@@ -1742,7 +1742,7 @@ def synchronize_image_and_poses(root, tolerance_threshold=1.0e6):
     translation_array_EM, rotation_array_EM = read_pose_messages_from_tracker(str(pose_messages_path))
 
     pose_image_indexes_path = root / "bags" / "pose_corresponding_image_indexes_calibration"
-    pose_corresponding_video_frame_index_array,  pose_corresponding_video_frame_time_difference_array = \
+    pose_corresponding_video_frame_index_array, pose_corresponding_video_frame_time_difference_array = \
         read_pose_corresponding_image_indexes_and_time_difference(str(pose_image_indexes_path))
 
     best_matches_pose_indexes = np.where(pose_corresponding_video_frame_time_difference_array < tolerance_threshold)
@@ -1761,11 +1761,12 @@ def synchronize_image_and_poses(root, tolerance_threshold=1.0e6):
         dest = selected_calibration_root / "{:08d}.jpg".format(selected_video_frame_index)
         if not dest.exists():
             shutil.copyfile(str(calibration_root / "{:08d}.jpg".format(selected_video_frame_index)),
-                     str(dest))
+                            str(dest))
 
         translation = translation_array_EM[best_matches_pose_indexes[ori_index]]
         rotation = rotation_array_EM[best_matches_pose_indexes[ori_index]]
-        with open(str(selected_calibration_root / "{:08d}.coords".format(selected_video_frame_index)), "w") as filestream:
+        with open(str(selected_calibration_root / "{:08d}.coords".format(selected_video_frame_index)),
+                  "w") as filestream:
             for i in range(3):
                 filestream.write("{:.5f},".format(translation[i]))
             for i in range(3):
@@ -1789,5 +1790,3 @@ def read_camera_to_tcp_transform(root):
         for j in range(4):
             transform[i, j] = temp[4 * i + j]
     return transform[:, :3], transform[:, 3].reshape((3, 1))
-
-

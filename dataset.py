@@ -108,7 +108,8 @@ def pre_processing_data(process_id, folder_list, downsampling, net_depth, is_hsv
                                                                     projection_matrices=
                                                                     visible_cropped_downsampled_undistorted_projection_matrices,
                                                                     extrinsic_matrices=visible_extrinsic_matrices,
-                                                                    is_hsv=is_hsv)
+                                                                    is_hsv=is_hsv,
+                                                                    view_indexes_per_point=view_indexes_per_point)
         queue_contamination_point_list.put([folder, contaminated_point_list])
         # Calculate appearing count of view per 3D point
         appearing_count_per_point = utils.get_visible_count_per_point(
@@ -200,8 +201,8 @@ class SfMDataset(Dataset):
                             largest_w = w
                     t.join(timeout=1)
 
-            print ("Largest image size is: ", largest_h, largest_w)
-            print ("Start pre-processing ...")
+            print("Largest image size is: ", largest_h, largest_w)
+            print("Start pre-processing ...")
 
             process_pool = []
             for i in range(workers - 1):
@@ -348,7 +349,8 @@ class SfMDataset(Dataset):
                 # We assume the filename has 8 logits followed by ".jpg"
                 start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
                 pos, increment = utils.generating_pos_and_increment(idx=idx,
-                                                                    visible_view_indexes=self.visible_view_indexes_per_seq[
+                                                                    visible_view_indexes=
+                                                                    self.visible_view_indexes_per_seq[
                                                                         folder],
                                                                     adjacent_range=self.adjacent_range)
                 # Get pair visible view indexes and pair extrinsic and projection matrices
@@ -372,7 +374,8 @@ class SfMDataset(Dataset):
                                                   mask_boundary=self.mask_boundary_per_seq[folder],
                                                   view_indexes_per_point=self.view_indexes_per_point_per_seq[folder],
                                                   visible_view_indexes=self.visible_view_indexes_per_seq[folder],
-                                                  contamination_point_list=self.contamination_point_list_per_seq[folder],
+                                                  contamination_point_list=self.contamination_point_list_per_seq[
+                                                      folder],
                                                   appearing_count_per_point=self.appearing_count_per_seq[folder],
                                                   use_view_indexes_per_point=False,
                                                   visualize=self.visualize)
@@ -545,7 +548,8 @@ class SfMDataset(Dataset):
             # Retrieve the folder path
             folder = img_file_name[:-12]
             start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
-            training_color_img_1 = utils.get_test_color_img(img_file_name, start_h, end_h, start_w, end_w, self.downsampling, self.is_hsv)
+            training_color_img_1 = utils.get_test_color_img(img_file_name, start_h, end_h, start_w, end_w,
+                                                            self.downsampling, self.is_hsv)
             if self.to_augment:
                 augmented_1 = self.transform(image=training_color_img_1)
                 training_color_img_1 = augmented_1['image']
