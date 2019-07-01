@@ -832,6 +832,55 @@ def write_point_cloud(path, point_cloud):
     return
 
 
+def draw_flow(flows):
+    flows_display = vutils.make_grid(flows, normalize=False, scale_each=False)
+    flows_display = flows_display.data.cpu().numpy()
+    flows_display = np.moveaxis(flows_display, source=[0, 1, 2], destination=[2, 0, 1])
+    h, w = flows_display.shape[:2]
+    fx, fy = flows_display[:, :, 0] * w, flows_display[:, :, 1] * h
+    ang = np.arctan2(fy, fx) + np.pi
+    v = np.sqrt(fx * fx + fy * fy)
+    hsv = np.zeros((h, w, 3), np.uint8)
+    hsv[..., 0] = ang * (180 / np.pi / 2)
+    hsv[..., 1] = 255
+    hsv[..., 2] = np.uint8(np.minimum(v, 1.0) * 255)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+
+
+def stack_and_display(phase, title, step, writer, image_list):
+    writer.add_image(phase + '/Images/' + title, np.vstack(image_list), step, dataformats='HWC')
+    return
+
+
+def display_color_depth_sparse_flow_dense_flow(idx, step, writer, colors_1, pred_depths_1,
+                                               sparse_flows_1, flows_from_depth_1,
+                                               phase="Training", is_return_image=False, color_reverse=True):
+    colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
+    colors_display = np.moveaxis(colors_display.data.cpu().numpy(),
+                                 source=[0, 1, 2], destination=[2, 0, 1])
+
+    pred_depths_display = vutils.make_grid(pred_depths_1, normalize=True, scale_each=True)
+    pred_depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(pred_depths_display.data.cpu().numpy(),
+                                                                       source=[0, 1, 2],
+                                                                       destination=[2, 0, 1])), cv2.COLORMAP_JET)
+
+    sparse_flows_display = draw_flow(sparse_flows_1)
+    dense_flows_display = draw_flow(flows_from_depth_1)
+
+    if color_reverse:
+        pred_depths_display = cv2.cvtColor(pred_depths_display, cv2.COLOR_BGR2RGB)
+
+    if is_return_image:
+        return colors_display, pred_depths_display.astype(np.float32) / 255.0, \
+               sparse_flows_display.astype(np.float32) / 255.0, dense_flows_display.astype(np.float32) / 255.0
+    else:
+        writer.add_image(phase + '/Images/Color_' + str(idx), colors_display, step, dataformats="HWC")
+        writer.add_image(phase + '/Images/Pred_Depth_' + str(idx), pred_depths_display, step, dataformats="HWC")
+        writer.add_image(phase + '/Images/Sparse_Flow_' + str(idx), sparse_flows_display, step, dataformats="HWC")
+        writer.add_image(phase + '/Images/Dense_Flow_' + str(idx), dense_flows_display, step, dataformats="HWC")
+        return
+
+
 def display_output(idx, step, writer, colors_1, scaled_depth_maps_1, phase):
     colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
     colors_display_hsv = np.moveaxis(colors_display.data.cpu().numpy(),

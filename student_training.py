@@ -339,8 +339,24 @@ if __name__ == '__main__':
 
             # Display depth and color at TensorboardX
             if batch % display_each == 0:
-                utils.display_output(1, step, writer, colors_1, scaled_depth_maps_1 * boundaries, phase="Training")
-                utils.display_output(2, step, writer, colors_2, scaled_depth_maps_2 * boundaries, phase="Training")
+                colors_1_display, pred_depths_1_display, sparse_flows_1_display, dense_flows_1_display = \
+                    utils.display_color_depth_sparse_flow_dense_flow(1, step, writer, colors_1,
+                                                                     scaled_depth_maps_1 * boundaries,
+                                                                     sparse_flows_1, flows_from_depth_1,
+                                                                     phase="Training", is_return_image=True,
+                                                                     color_reverse=True)
+                colors_2_display, pred_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
+                    utils.display_color_depth_sparse_flow_dense_flow(2, step, writer, colors_2,
+                                                                     scaled_depth_maps_2 * boundaries,
+                                                                     sparse_flows_2, flows_from_depth_2,
+                                                                     phase="Training", is_return_image=True,
+                                                                     color_reverse=True)
+                utils.stack_and_display(phase="Training", title="Results (c1, d1, sf1, df1, c2, d2, sf2, df2)",
+                                        step=step, writer=writer,
+                                        image_list=[colors_1_display, pred_depths_1_display, sparse_flows_1_display,
+                                                    dense_flows_1_display,
+                                                    colors_2_display, pred_depths_2_display, sparse_flows_2_display,
+                                                    dense_flows_2_display])
         tq.close()
 
         # Save student model
@@ -435,10 +451,24 @@ if __name__ == '__main__':
 
                 # Display depth and color at TensorboardX
                 if batch % display_each == 0:
-                    utils.display_output(1, step, writer, colors_1, scaled_depth_maps_1 * boundaries,
-                                         phase="Validation")
-                    utils.display_output(2, step, writer, colors_2, scaled_depth_maps_2 * boundaries,
-                                         phase="Validation")
+                    colors_1_display, pred_depths_1_display, sparse_flows_1_display, dense_flows_1_display = \
+                        utils.display_color_depth_sparse_flow_dense_flow(1, step, writer, colors_1,
+                                                                         scaled_depth_maps_1 * boundaries,
+                                                                         sparse_flows_1, flows_from_depth_1,
+                                                                         phase="Training", is_return_image=True,
+                                                                         color_reverse=True)
+                    colors_2_display, pred_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
+                        utils.display_color_depth_sparse_flow_dense_flow(2, step, writer, colors_2,
+                                                                         scaled_depth_maps_2 * boundaries,
+                                                                         sparse_flows_2, flows_from_depth_2,
+                                                                         phase="Training", is_return_image=True,
+                                                                         color_reverse=True)
+                    utils.stack_and_display(phase="Training", title="Results (c1, d1, sf1, df1, c2, d2, sf2, df2)",
+                                            step=step, writer=writer,
+                                            image_list=[colors_1_display, pred_depths_1_display, sparse_flows_1_display,
+                                                        dense_flows_1_display,
+                                                        colors_2_display, pred_depths_2_display, sparse_flows_2_display,
+                                                        dense_flows_2_display])
 
                 # TensorboardX
                 writer.add_scalars('Validation', {'overall': mean_loss,

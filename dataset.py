@@ -454,9 +454,10 @@ class SfMDataset(Dataset):
                         folder]
             elif self.phase == 'validation':
                 return [img_to_tensor(color_img_1), img_to_tensor(color_img_2),
-                        img_to_tensor(sparse_depth_img_1),
-                        img_to_tensor(sparse_depth_img_2),
+                        img_to_tensor(sparse_depth_img_1), img_to_tensor(sparse_depth_img_2),
                         img_to_tensor(mask_img_1), img_to_tensor(mask_img_2),
+                        img_to_tensor(flow_img_1), img_to_tensor(flow_img_2),
+                        img_to_tensor(flow_mask_img_1), img_to_tensor(flow_mask_img_2),
                         img_to_tensor(mask_boundary),
                         torch.from_numpy(rotation_1_wrt_2),
                         torch.from_numpy(rotation_2_wrt_1), torch.from_numpy(translation_1_wrt_2),
