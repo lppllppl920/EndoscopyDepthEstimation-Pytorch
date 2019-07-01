@@ -526,15 +526,15 @@ def get_torch_training_data(pair_extrinsics, pair_projections, pair_indexes, poi
     in_mask_point_1D_locations_2 = in_image_point_1D_locations_2[in_mask_indexes_2]
     flow_mask_image_2[in_mask_point_1D_locations_2, 0] = 1.0
 
-    flow_image_1[in_mask_point_1D_locations_1, :] = points_2D_image_1[
+    flow_image_1[in_mask_point_1D_locations_1, :] = points_2D_image_2[
                                                     visible_point_indexes_1[in_image_indexes_1[in_mask_indexes_1]],
                                                     :2] - \
-                                                    points_2D_image_2[
+                                                    points_2D_image_1[
                                                     visible_point_indexes_1[in_image_indexes_1[in_mask_indexes_1]], :2]
-    flow_image_2[in_mask_point_1D_locations_2, :] = points_2D_image_2[
+    flow_image_2[in_mask_point_1D_locations_2, :] = points_2D_image_1[
                                                     visible_point_indexes_2[in_image_indexes_2[in_mask_indexes_2]],
                                                     :2] - \
-                                                    points_2D_image_1[
+                                                    points_2D_image_2[
                                                     visible_point_indexes_2[in_image_indexes_2[in_mask_indexes_2]], :2]
 
     flow_image_1[:, 0] /= width
@@ -549,7 +549,7 @@ def get_torch_training_data(pair_extrinsics, pair_projections, pair_indexes, poi
     flow_image_1[outlier_indexes_1, 0] = 0.0
     flow_image_2[outlier_indexes_2, 0] = 0.0
     flow_image_1[outlier_indexes_1, 1] = 0.0
-    flow_image_2[outlier_indexes_2, 0] = 0.0
+    flow_image_2[outlier_indexes_2, 1] = 0.0
 
     depth_img_1 = np.zeros((height, width, 1), dtype=np.float32)
     depth_img_2 = np.zeros((height, width, 1), dtype=np.float32)
@@ -851,7 +851,7 @@ def draw_flow(flows):
     hsv[..., 0] = ang * (180 / np.pi / 2)
     hsv[..., 1] = 255
     hsv[..., 2] = np.uint8(np.minimum(v, 1.0) * 255)
-    return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
 def stack_and_display(phase, title, step, writer, image_list):
@@ -877,6 +877,8 @@ def display_color_depth_sparse_flow_dense_flow(idx, step, writer, colors_1, pred
 
     if color_reverse:
         pred_depths_display = cv2.cvtColor(pred_depths_display, cv2.COLOR_BGR2RGB)
+        sparse_flows_display = cv2.cvtColor(sparse_flows_display, cv2.COLOR_BGR2RGB)
+        dense_flows_display = cv2.cvtColor(dense_flows_display, cv2.COLOR_BGR2RGB)
 
     if is_return_image:
         return colors_display, pred_depths_display.astype(np.float32) / 255.0, \
