@@ -1,19 +1,22 @@
 --adjacent_range
-5 50
+5
+30
 --id_range
-1 11
+1
+11
 --input_downsampling
 4.0
 --torchsummary_input_size
-256 320
+256
+320
 --batch_size
 8
 --num_workers
 8
 --dcl_weight
-1.0
+0.0
 --sfl_weight
-100.0
+1.0
 --max_lr
 1.0e-3
 --min_lr
@@ -35,7 +38,9 @@
 400
 --use_hsv_colorspace
 --architecture_summary
---training_root
-""
+--training_result_root
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/Training"
 --training_data_root
-""
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/FullLengthEndoscopicVIdeoData"
+
+tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Training/depth_estimation_run_6_30_20_24_bag_2"

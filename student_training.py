@@ -61,7 +61,7 @@ if __name__ == '__main__':
                         help='convert RGB to hsv colorspace')
     parser.add_argument('--training_result_root', type=str, help='root of the training input and ouput')
     parser.add_argument('--architecture_summary', action='store_true', help='display the network architecture')
-    parser.add_argument('--trained_student_model_path', type=str, required=True,
+    parser.add_argument('--trained_student_model_path', type=str, default=None,
                         help='path to the trained student model')
     parser.add_argument('--training_data_root', type=str, help='path to the training data')
 
@@ -74,7 +74,6 @@ if __name__ == '__main__':
     np.random.seed(10085)
     random.seed(10085)
 
-    device = torch.device("cuda:0")
     # Hyper-parameters
     adjacent_range = args.adjacent_range
     input_downsampling = args.input_downsampling
@@ -135,12 +134,14 @@ if __name__ == '__main__':
         ]),
     ], p=1.)
 
-    log_root = training_result_root / "depth_estimation_run_{}_{}_{}_{}".format(currentDT.month, currentDT.day,
-                                                                                currentDT.hour,
-                                                                                currentDT.minute)
+    log_root = Path(training_result_root) / "depth_estimation_run_{}_{}_{}_{}_bag_{}".format(currentDT.month,
+                                                                                             currentDT.day,
+                                                                                             currentDT.hour,
+                                                                                             currentDT.minute,
+                                                                                             testing_patient_id)
     if not log_root.exists():
         log_root.mkdir()
-    writer = SummaryWriter(logdir=str(log_root))
+    writer = SummaryWriter(log_dir=str(log_root))
     print("Tensorboard visualization at {}".format(str(log_root)))
 
     # Get color image filenames
@@ -198,7 +199,7 @@ if __name__ == '__main__':
     sparse_flow_loss_function = losses.SparseMaskedL1Loss()
     depth_consistency_loss_function = losses.NormalizedL2Loss()
 
-    # Load previous student model, lr scheduler, failure SfM sequences, and so on
+    # Load previous student model, lr scheduler, and so on
     if load_trained_student_model:
         if Path(trained_student_model_path).exists():
             print("Loading {:s} ...".format(trained_student_model_path))
@@ -311,7 +312,7 @@ if __name__ == '__main__':
                 optimizer.zero_grad()
                 loss.backward()
                 # Prevent one sample from having too much impact on the training
-                # torch.nn.utils.clip_grad_norm_(depth_estimation_model_student.parameters(), 10.0)
+                torch.nn.utils.clip_grad_norm_(depth_estimation_model_student.parameters(), 10.0)
                 optimizer.step()
                 if batch == 0:
                     mean_loss = loss.item()

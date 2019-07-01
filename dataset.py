@@ -91,7 +91,7 @@ def pre_processing_data(process_id, folder_list, downsampling, network_downsampl
         queue_projection.put([folder_str, visible_cropped_downsampled_undistorted_projection_matrices])
         # Get approximate data global scale to reduce training data imbalance
         global_scale = utils.global_scale_estimation(visible_extrinsic_matrices, point_cloud)
-        queue_estimated_scale.put([folder, global_scale])
+        queue_estimated_scale.put([folder_str, global_scale])
         visible_cropped_downsampled_imgs = utils.get_color_imgs(folder, visible_view_indexes=visible_view_indexes,
                                                                 start_h=start_h, start_w=start_w,
                                                                 end_h=end_h, end_w=end_w,
@@ -298,8 +298,8 @@ class SfMDataset(Dataset):
                 folder, mask_boundary = queue_mask_boundary.get()
                 self.mask_boundary_per_seq[folder] = mask_boundary
             while not queue_estimated_scale.empty():
-                folder, estiamted_scale = queue_estimated_scale.get()
-                self.estimated_scale_per_seq[folder] = estiamted_scale
+                folder, estimated_scale = queue_estimated_scale.get()
+                self.estimated_scale_per_seq[folder] = estimated_scale
             print("Pre-processing complete.")
 
             # Store all intermediate information to a single data file

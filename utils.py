@@ -389,8 +389,7 @@ def get_clean_point_list(imgs, point_cloud, view_indexes_per_point, mask_boundar
 
     clean_point_cloud_array = (point_cloud_contamination_accumulator < point_cloud_appearance_count / 2).astype(
         np.float32)
-    print("{:d} points eliminated".format(
-        clean_point_cloud_array.shape[0] - np.sum(clean_point_cloud_array)))
+    print("{} points eliminated".format(int(clean_point_cloud_array.shape[0] - np.sum(clean_point_cloud_array))))
     return clean_point_cloud_array
 
 
@@ -543,10 +542,23 @@ def get_torch_training_data(pair_extrinsics, pair_projections, pair_indexes, poi
     flow_image_2[:, 0] /= width
     flow_image_2[:, 1] /= height
 
+    outlier_indexes_1 = np.where((np.abs(flow_image_1[:, 0]) > 5.0) | (np.abs(flow_image_1[:, 1]) > 5.0))[0]
+    outlier_indexes_2 = np.where((np.abs(flow_image_2[:, 0]) > 5.0) | (np.abs(flow_image_2[:, 1]) > 5.0))[0]
+    flow_mask_image_1[outlier_indexes_1, 0] = 0.0
+    flow_mask_image_2[outlier_indexes_2, 0] = 0.0
+    flow_image_1[outlier_indexes_1, 0] = 0.0
+    flow_image_2[outlier_indexes_2, 0] = 0.0
+    flow_image_1[outlier_indexes_1, 1] = 0.0
+    flow_image_2[outlier_indexes_2, 0] = 0.0
+
     depth_img_1 = np.zeros((height, width, 1), dtype=np.float32)
     depth_img_2 = np.zeros((height, width, 1), dtype=np.float32)
     depth_mask_img_1 = np.zeros((height, width, 1), dtype=np.float32)
     depth_mask_img_2 = np.zeros((height, width, 1), dtype=np.float32)
+    depth_img_1 = depth_img_1.reshape((-1, 1))
+    depth_img_2 = depth_img_2.reshape((-1, 1))
+    depth_mask_img_1 = depth_mask_img_1.reshape((-1, 1))
+    depth_mask_img_2 = depth_mask_img_2.reshape((-1, 1))
 
     depth_img_1[in_mask_point_1D_locations_1, 0] = points_3D_camera_1[
         visible_point_indexes_1[in_image_indexes_1[in_mask_indexes_1]], 2]
