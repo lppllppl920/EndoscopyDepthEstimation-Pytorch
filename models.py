@@ -406,7 +406,7 @@ def _warp_coordinate_generate(depth_maps_1, img_masks, translation_vectors, rota
                                                                    width, 1))
 
     # expand operation doesn't allocate new memory (repeat does)
-    depth_maps_2_calculate = torch.tensor(1.0e30).float().cuda() * (torch.tensor(1.0).float().cuda() - img_masks) + \
+    depth_maps_2_calculate = torch.tensor(1.0e30).float().cuda() * (1.0 - img_masks) + \
                              img_masks * depth_maps_2_calculate
 
     # This is the source coordinate in coordinate system 2 but ordered in coordinate system 1 in order to warp image 2 to coordinate system 1

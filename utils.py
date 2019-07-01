@@ -838,7 +838,9 @@ def draw_flow(flows):
                                        scale_each=False)
     flows_y_display = vutils.make_grid(flows[:, 1, :, :].view(batch_size, 1, height, width), normalize=False,
                                        scale_each=False)
-    flows_display = torch.cat([flows_x_display, flows_y_display], dim=0)
+    flows_display = torch.cat([flows_x_display[0, :, :].view(1, flows_x_display.shape[1], flows_x_display.shape[2]),
+                               flows_y_display[0, :, :].view(1, flows_x_display.shape[1], flows_x_display.shape[2])],
+                              dim=0)
     flows_display = flows_display.data.cpu().numpy()
     flows_display = np.moveaxis(flows_display, source=[0, 1, 2], destination=[2, 0, 1])
     h, w = flows_display.shape[:2]
@@ -859,16 +861,17 @@ def stack_and_display(phase, title, step, writer, image_list):
 
 def display_color_depth_sparse_flow_dense_flow(idx, step, writer, colors_1, pred_depths_1,
                                                sparse_flows_1, flows_from_depth_1,
-                                               phase="Training", is_return_image=False, color_reverse=True):
+                                               phase="Training", is_return_image=False, color_reverse=True,
+                                               ):
     colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
     colors_display = np.moveaxis(colors_display.data.cpu().numpy(),
                                  source=[0, 1, 2], destination=[2, 0, 1])
+    colors_display = cv2.cvtColor(colors_display, cv2.COLOR_HSV2RGB_FULL)
 
     pred_depths_display = vutils.make_grid(pred_depths_1, normalize=True, scale_each=True)
     pred_depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(pred_depths_display.data.cpu().numpy(),
                                                                        source=[0, 1, 2],
                                                                        destination=[2, 0, 1])), cv2.COLORMAP_JET)
-
     sparse_flows_display = draw_flow(sparse_flows_1)
     dense_flows_display = draw_flow(flows_from_depth_1)
 
