@@ -419,7 +419,7 @@ if __name__ == '__main__':
                 sparse_flows_2 = sparse_flows_2 * boundaries
                 flows_from_depth_1 = flows_from_depth_1 * boundaries
                 flows_from_depth_2 = flows_from_depth_2 * boundaries
-                sparse_flow_loss = sparse_flow_weight * 0.5 * (sparse_flow_loss_function(
+                sparse_flow_loss = 0.5 * (sparse_flow_loss_function(
                     [sparse_flows_1, flows_from_depth_1, sparse_flow_masks_1]) + sparse_flow_loss_function(
                     [sparse_flows_2, flows_from_depth_2, sparse_flow_masks_2]))
 
@@ -430,7 +430,7 @@ if __name__ == '__main__':
                 warped_depth_maps_1_to_2, intersect_masks_2 = depth_warping_layer(
                     [scaled_depth_maps_2, scaled_depth_maps_1, boundaries, translations_2_wrt_1, rotations_2_wrt_1,
                      intrinsics])
-                depth_consistency_loss = depth_consistency_weight * 0.5 * (depth_consistency_loss_function(
+                depth_consistency_loss = 0.5 * (depth_consistency_loss_function(
                     [scaled_depth_maps_1, warped_depth_maps_2_to_1,
                      intersect_masks_1]) + depth_consistency_loss_function(
                     [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2]))
@@ -476,6 +476,12 @@ if __name__ == '__main__':
                                                   'sparse_flow': mean_sparse_flow_loss}, epoch)
 
         tq.close()
-        writer.export_scalars_to_json(str(log_root / ("all_scalars_" + str(epoch) + ".json")))
+        model_path_epoch = log_root / 'checkpoint_model_epoch_{}_validation_{}.pt'.format(epoch,
+                                                                                          mean_sparse_flow_loss)
+        utils.save_model(model=depth_estimation_model_student, optimizer=optimizer,
+                         epoch=epoch + 1, step=step, model_path=model_path_epoch,
+                         validation_loss=mean_sparse_flow_loss)
+        writer.export_scalars_to_json(
+            str(log_root / ("all_scalars_" + str(epoch) + ".json")))
 
     writer.close()

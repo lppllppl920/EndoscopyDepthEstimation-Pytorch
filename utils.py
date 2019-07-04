@@ -649,26 +649,37 @@ def kaiming_weight_zero_bias(model, mode="fan_in", activation_mode="relu", distr
                 torch.nn.init.constant_(module.bias, 0)
 
 
-def save_model(model, optimizer, epoch, step, model_path, failure_sequences, validation_loss):
-    try:
-        torch.save({
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'epoch': epoch,
-            'step': step,
-            'failure': failure_sequences,
-            'validation': validation_loss
-        }, str(model_path))
-    except IOError:
-        torch.save({
-            'model': model.state_dict(),
-            'optimizer': optimizer.state_dict(),
-            'epoch': epoch,
-            'step': step,
-            'validation': validation_loss
-        }, str(model_path))
-
+def save_model(model, optimizer, epoch, step, model_path, validation_loss):
+    torch.save({
+        'model': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+        'epoch': epoch,
+        'step': step,
+        'validation': validation_loss
+    }, str(model_path))
     return
+
+
+# def save_model(model, optimizer, epoch, step, model_path, failure_sequences, validation_loss):
+#     try:
+#         torch.save({
+#             'model': model.state_dict(),
+#             'optimizer': optimizer.state_dict(),
+#             'epoch': epoch,
+#             'step': step,
+#             'failure': failure_sequences,
+#             'validation': validation_loss
+#         }, str(model_path))
+#     except IOError:
+#         torch.save({
+#             'model': model.state_dict(),
+#             'optimizer': optimizer.state_dict(),
+#             'epoch': epoch,
+#             'step': step,
+#             'validation': validation_loss
+#         }, str(model_path))
+#
+#     return
 
 
 def visualize_color_image(title, images, rebias=False, is_hsv=False, idx=None):
