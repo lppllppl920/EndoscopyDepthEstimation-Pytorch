@@ -302,7 +302,7 @@ if __name__ == '__main__':
                 [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2]))
             loss = depth_consistency_loss + sparse_flow_loss
 
-            if math.isnan(loss.item()):
+            if math.isnan(loss.item()) or math.isinf(loss.item()):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.zero_grad()
