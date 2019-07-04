@@ -216,7 +216,6 @@ if __name__ == '__main__':
         step = 0
 
     for epoch in range(epoch, n_epochs + 1):
-        epoch_failure_sequences = {}
         # Set the seed correlated to epoch for reproducibility
         torch.manual_seed(10086 + epoch)
         np.random.seed(10086 + epoch)
@@ -236,6 +235,8 @@ if __name__ == '__main__':
                 rotations_2_wrt_1, translations_1_wrt_2, translations_2_wrt_1, intrinsics, folders) in \
                 enumerate(train_loader):
 
+            if batch > num_iter:
+                break
             # Update learning rate
             lr_scheduler.batch_step(batch_iteration=step)
             tq.set_description('Epoch {}, lr {}'.format(epoch, lr_scheduler.get_lr()))
