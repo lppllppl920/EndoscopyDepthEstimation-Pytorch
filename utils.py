@@ -902,25 +902,38 @@ def display_color_depth_sparse_flow_dense_flow(idx, step, writer, colors_1, pred
         return
 
 
-def display_output(idx, step, writer, colors_1, scaled_depth_maps_1, phase):
+def display_color_pred_depth_sparse_depth(idx, step, writer, colors_1, pred_depth_maps_1, sparse_depth_maps_1,
+                                          phase, return_image=False):
     colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
     colors_display_hsv = np.moveaxis(colors_display.data.cpu().numpy(),
                                      source=[0, 1, 2], destination=[2, 0, 1])
     colors_display_hsv[colors_display_hsv < 0.0] = 0.0
     colors_display_hsv[colors_display_hsv > 1.0] = 1.0
     colors_display_hsv = cv2.cvtColor(colors_display_hsv, cv2.COLOR_HSV2RGB_FULL)
-    writer.add_image(phase + '/Images/Color_' + str(idx),
-                     np.moveaxis(colors_display_hsv, source=[0, 1, 2], destination=[1, 2, 0]), step)
 
-    depths_display = vutils.make_grid(scaled_depth_maps_1, normalize=True, scale_each=True)
-    depths_display_hsv = cv2.applyColorMap(np.uint8(255 * np.moveaxis(depths_display.data.cpu().numpy(),
-                                                                      source=[0, 1, 2], destination=[2, 0, 1])),
-                                           cv2.COLORMAP_HOT)
-    depths_display_hsv = cv2.cvtColor(depths_display_hsv, cv2.COLOR_BGR2RGB)
-    writer.add_image(phase + '/Images/Depth_' + str(idx),
-                     np.moveaxis(depths_display_hsv, source=[0, 1, 2], destination=[1, 2, 0]), step)
+    depths_display = vutils.make_grid(pred_depth_maps_1, normalize=True, scale_each=True)
+    depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(depths_display.data.cpu().numpy(),
+                                                                  source=[0, 1, 2], destination=[2, 0, 1])),
+                                       cv2.COLORMAP_HOT)
 
-    return colors_display_hsv, depths_display_hsv
+    sparse_depths_display = vutils.make_grid(sparse_depth_maps_1, normalize=True, scale_each=True)
+    sparse_depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(sparse_depths_display.data.cpu().numpy(),
+                                                                         source=[0, 1, 2], destination=[2, 0, 1])),
+                                              cv2.COLORMAP_HOT)
+
+    depths_display = cv2.cvtColor(depths_display, cv2.COLOR_BGR2RGB)
+    sparse_depths_display = cv2.cvtColor(sparse_depths_display, cv2.COLOR_BGR2RGB)
+
+    if return_image:
+        return colors_display_hsv, depths_display / 255.0, sparse_depths_display / 255.0
+    else:
+        writer.add_image(phase + '/Images/Color_' + str(idx),
+                         np.moveaxis(colors_display_hsv, source=[0, 1, 2], destination=[1, 2, 0]), step)
+        writer.add_image(phase + '/Images/Depth_' + str(idx),
+                         np.moveaxis(depths_display, source=[0, 1, 2], destination=[1, 2, 0]), step)
+        writer.add_image(phase + '/Images/Sparse_Depth_' + str(idx),
+                         np.moveaxis(sparse_depths_display, source=[0, 1, 2], destination=[1, 2, 0]), step)
+        return
 
 
 def display_depth_goal(idx, step, writer, goal_depth_map_1):
