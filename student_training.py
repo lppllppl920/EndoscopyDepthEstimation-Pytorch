@@ -180,8 +180,9 @@ if __name__ == '__main__':
 
     depth_estimation_model_student = models.FCDenseNet57(n_classes=1)
     # Initialize the depth estimation network with Kaiming He initialization
-    utils.init_net(depth_estimation_model_student, type="kaiming", mode="fan_in", activation_mode="relu",
-                   distribution="normal")
+    depth_estimation_model_student = utils.init_net(depth_estimation_model_student, type="kaiming", mode="fan_in",
+                                                    activation_mode="relu",
+                                                    distribution="normal")
     # Multi-GPU running
     depth_estimation_model_student = torch.nn.DataParallel(depth_estimation_model_student)
     # Summary network architecture
