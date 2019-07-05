@@ -855,13 +855,13 @@ def draw_flow(flows):
     flows_display = flows_display.data.cpu().numpy()
     flows_display = np.moveaxis(flows_display, source=[0, 1, 2], destination=[2, 0, 1])
     h, w = flows_display.shape[:2]
-    fx, fy = flows_display[:, :, 0] * w, flows_display[:, :, 1] * h
+    fx, fy = flows_display[:, :, 0], flows_display[:, :, 1] * h / w
     ang = np.arctan2(fy, fx) + np.pi
     v = np.sqrt(fx * fx + fy * fy)
     hsv = np.zeros((h, w, 3), np.uint8)
     hsv[..., 0] = ang * (180 / np.pi / 2)
     hsv[..., 1] = 255
-    hsv[..., 2] = np.uint8(np.minimum(v, 1.0) * 255)
+    hsv[..., 2] = np.uint8(np.minimum(v, 0.5) * 255)
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 

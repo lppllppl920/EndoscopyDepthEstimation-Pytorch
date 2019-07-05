@@ -184,7 +184,7 @@ class FCDenseNet(nn.Module):
             out = self.denseBlocksUp[i](out)
 
         out = self.finalConv(out)
-        return out
+        return torch.abs(out)
 
 
 def FCDenseNet57(n_classes):
