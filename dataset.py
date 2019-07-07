@@ -144,7 +144,7 @@ class SfMDataset(Dataset):
         self.crop_positions_per_seq = {}
         self.estimated_scale_per_seq = {}
         self.normalize = albu.Normalize(std=(0.5, 0.5, 0.5), mean=(0.5, 0.5, 0.5), max_pixel_value=255.0)
-        precompute_path = store_data_root / ("precompute_" + str(
+        precompute_path = store_data_root / ("evaluate_precompute_" + str(
             self.downsampling) + "_" + str(self.network_downsampling) + "_" + str(self.inlier_percentage) + ".pkl")
         # Save all intermediate results to hard disk for quick access later on
         if not use_store_data or not precompute_path.exists():

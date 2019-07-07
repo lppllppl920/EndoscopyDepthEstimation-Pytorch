@@ -843,7 +843,7 @@ def write_point_cloud(path, point_cloud):
     return
 
 
-def draw_flow(flows):
+def draw_flow(flows, max_v=None):
     batch_size, channel, height, width = flows.shape
     flows_x_display = vutils.make_grid(flows[:, 0, :, :].view(batch_size, 1, height, width), normalize=False,
                                        scale_each=False)
@@ -861,13 +861,21 @@ def draw_flow(flows):
     hsv = np.zeros((h, w, 3), np.uint8)
     hsv[..., 0] = ang * (180 / np.pi / 2)
     hsv[..., 1] = 255
-    hsv[..., 2] = np.uint8(np.minimum(v, 0.2) * 255)
-    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+    if max_v is None:
+        hsv[..., 2] = np.uint8(np.minimum(v / np.max(v), 1.0) * 255)
+    else:
+        hsv[..., 2] = np.uint8(np.minimum(v / max_v, 1.0) * 255)
+
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR), np.max(v)
 
 
-def stack_and_display(phase, title, step, writer, image_list):
-    writer.add_image(phase + '/Images/' + title, np.vstack(image_list), step, dataformats='HWC')
-    return
+def stack_and_display(phase, title, step, writer, image_list, return_image=False):
+    writer.add_image(phase + '/Images/' + title,
+                     np.moveaxis(np.vstack(image_list), source=[0, 1, 2], destination=[1, 2, 0]), step)
+    if return_image:
+        return np.vstack(image_list)
+    else:
+        return
 
 
 def display_color_sparse_depth_dense_depth_warped_depth_sparse_flow_dense_flow(idx, step, writer, colors_1,
@@ -903,8 +911,8 @@ def display_color_sparse_depth_dense_depth_warped_depth_sparse_flow_dense_flow(i
                                                                          source=[0, 1, 2],
                                                                          destination=[2, 0, 1])), cv2.COLORMAP_JET)
 
-    sparse_flows_display = draw_flow(sparse_flows_1)
-    dense_flows_display = draw_flow(flows_from_depth_1)
+    dense_flows_display, max_v = draw_flow(flows_from_depth_1)
+    sparse_flows_display, _ = draw_flow(sparse_flows_1, max_v=max_v)
 
     if color_reverse:
         pred_depths_display = cv2.cvtColor(pred_depths_display, cv2.COLOR_BGR2RGB)

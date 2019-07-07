@@ -149,7 +149,7 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Traini
 --batch_size
 1
 --num_workers
-1
+16
 --network_downsampling
 64
 --inlier_percentage
@@ -157,10 +157,6 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Traini
 --testing_patient_id
 4
 --load_intermediate_data
---num_iter
-1000
---number_epoch
-400
 --use_hsv_colorspace
 --architecture_summary
 --training_result_root
@@ -168,4 +164,8 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Traini
 --training_data_root
 "/home/xliu89/RemoteData/Sinus Project Data/xingtong/FullLengthEndoscopicVIdeoData"
 --sequence_root
-""
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/FullLengthEndoscopicVIdeoData/bag_1/_start_002603_end_002984_stride_1000_segment_00"
+--trained_model_path
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/Best_validation_loss_models/student_model_down_4.0_range_10_20_inliner_0.995_hsv_True_bag_3.pt"
+
+tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Evaluation/depth_estimation_run_7_7_0_5_bag_4" --samples_per_plugin images=1000

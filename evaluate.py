@@ -30,24 +30,28 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset--Evaluation',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--downsampling', type=float, default=4.0,
+    parser.add_argument('--input_downsampling', type=float, default=4.0,
                         help='image downsampling rate to speed up training and reduce overfitting')
-    parser.add_argument('--torchsummary_input_size', nargs='+', type=int,
+    parser.add_argument('--torchsummary_input_size', nargs='+', type=int, required=True,
                         help='input size for torchsummary (analysis purpose only)')
-    parser.add_argument('--batch_size', type=int, default=8, help='batch size for testing')
-    parser.add_argument('--num_workers', type=int, default=8, help='number of workers for input data loader')
-    parser.add_argument('--network_downsampling', type=int, default=7, help='downsampling of network')
+    parser.add_argument('--batch_size', type=int, default=1, help='batch size for testing')
+    parser.add_argument('--num_workers', type=int, default=2, help='number of workers for input data loader')
+    parser.add_argument('--adjacent_range', nargs='+', type=int, required=True,
+                        help='interval range for a pair of video frames')
+    parser.add_argument('--id_range', nargs='+', type=int, required=True,
+                        help='id range for the training and testing dataset')
+    parser.add_argument('--network_downsampling', type=int, default=64, help='downsampling of network')
     parser.add_argument('--inlier_percentage', type=float, default=0.995,
                         help='percentage of inliers of SfM point clouds (for pruning some outliers)')
-    parser.add_argument('--testing_patient_id', type=int, help='id of the testing patient')
+    parser.add_argument('--testing_patient_id', type=int, required=True, help='id of the testing patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
     parser.add_argument('--use_hsv_colorspace', action='store_true',
                         help='convert RGB to hsv colorspace')
     parser.add_argument('--architecture_summary', action='store_true', help='display the network architecture')
-    parser.add_argument('--trained_model_path', type=str, default=None, help='path to the trained student model')
-    parser.add_argument('--sequence_root', type=str, default=None, help='path to the testing sequence')
-    parser.add_argument('--training_result_root', type=str, help='root of the training input and ouput')
-    parser.add_argument('--training_data_root', type=str, help='path to the training data')
+    parser.add_argument('--trained_model_path', type=str, required=True, help='path to the trained student model')
+    parser.add_argument('--sequence_root', type=str, required=True, help='path to the testing sequence')
+    parser.add_argument('--training_result_root', type=str, required=True, help='root of the training input and ouput')
+    parser.add_argument('--training_data_root', type=str, required=True, help='path to the training data')
     args = parser.parse_args()
 
     # Fix randomness for reproducibility
@@ -63,8 +67,9 @@ if __name__ == '__main__':
     else:
         height = 256
         width = 320
-
-    downsampling = args.downsampling
+    adjacent_range = args.adjacent_range
+    id_range = args.id_range
+    input_downsampling = args.input_downsampling
     batch_size = args.batch_size
     num_workers = args.num_workers
     network_downsampling = args.network_downsampling
@@ -77,7 +82,6 @@ if __name__ == '__main__':
     training_data_root = Path(args.training_data_root)
     trained_model_path = Path(args.trained_model_path)
     sequence_root = Path(args.sequence_root)
-    id_range = args.id_range
     currentDT = datetime.datetime.now()
 
     depth_estimation_model_teacher = []
@@ -92,8 +96,8 @@ if __name__ == '__main__':
                                                                                              currentDT.minute,
                                                                                              testing_patient_id)
     if not log_root.exists():
-        log_root.mkdir()
-    writer = SummaryWriter(logdir=str(log_root))
+        log_root.mkdir(parents=True)
+    writer = SummaryWriter(log_dir=str(log_root))
     print("Tensorboard visualization at {}".format(str(log_root)))
 
     # Read all frame indexes
@@ -107,8 +111,8 @@ if __name__ == '__main__':
 
     test_dataset = dataset.SfMDataset(image_file_names=test_filenames,
                                       folder_list=training_folder_list + val_folder_list,
-                                      adjacent_range=(1, 1), transform=None,
-                                      downsampling=downsampling,
+                                      adjacent_range=adjacent_range, transform=None,
+                                      downsampling=input_downsampling,
                                       network_downsampling=network_downsampling, inlier_percentage=inlier_percentage,
                                       use_store_data=load_intermediate_data,
                                       store_data_root=training_data_root,
@@ -209,34 +213,41 @@ if __name__ == '__main__':
                                                                                                  writer=writer,
                                                                                                  colors_1=colors_1,
                                                                                                  sparse_depths_1=sparse_depths_1,
-                                                                                                 pred_depths_1=scaled_depth_maps_1,
+                                                                                                 pred_depths_1=scaled_depth_maps_1 * boundaries,
                                                                                                  warped_depths_2_to_1=warped_depth_maps_2_to_1,
                                                                                                  sparse_flows_1=sparse_flows_1,
                                                                                                  flows_from_depth_1=flows_from_depth_1,
-                                                                                                 phase="Training",
-                                                                                                 is_return_image=False,
-                                                                                                 color_reverse=True,
+                                                                                                 phase="Evaluation",
+                                                                                                 is_return_image=True,
+                                                                                                 color_reverse=True
                                                                                                  )
             colors_2_display, sparse_depths_2_display, pred_depths_2_display, warped_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
                 utils.display_color_sparse_depth_dense_depth_warped_depth_sparse_flow_dense_flow(idx=2, step=step,
                                                                                                  writer=writer,
                                                                                                  colors_1=colors_2,
                                                                                                  sparse_depths_1=sparse_depths_2,
-                                                                                                 pred_depths_1=scaled_depth_maps_2,
+                                                                                                 pred_depths_1=scaled_depth_maps_2 * boundaries,
                                                                                                  warped_depths_2_to_1=warped_depth_maps_1_to_2,
                                                                                                  sparse_flows_1=sparse_flows_2,
                                                                                                  flows_from_depth_1=flows_from_depth_2,
-                                                                                                 phase="Training",
-                                                                                                 is_return_image=False,
-                                                                                                 color_reverse=True,
+                                                                                                 phase="Evaluation",
+                                                                                                 is_return_image=True,
+                                                                                                 color_reverse=True
                                                                                                  )
-            utils.stack_and_display(phase="Training",
-                                    title="Results (c1, sd1, d1, wd1, sf1, df1, c2, sd2, d2, wd2, sf2, df2)",
-                                    step=step, writer=writer,
-                                    image_list=[colors_1_display, sparse_depths_1_display, pred_depths_1_display,
-                                                warped_depths_1_display, sparse_flows_1_display, dense_flows_1_display,
-                                                colors_2_display, sparse_depths_2_display, pred_depths_2_display,
-                                                warped_depths_2_display, sparse_flows_2_display, dense_flows_2_display])
+            image_display = utils.stack_and_display(phase="Evaluation",
+                                                    title="Results (c1, sd1, d1, wd1, sf1, df1, c2, sd2, d2, wd2, sf2, df2)",
+                                                    step=step, writer=writer,
+                                                    image_list=[colors_1_display, sparse_depths_1_display,
+                                                                pred_depths_1_display,
+                                                                warped_depths_1_display, sparse_flows_1_display,
+                                                                dense_flows_1_display,
+                                                                colors_2_display, sparse_depths_2_display,
+                                                                pred_depths_2_display,
+                                                                warped_depths_2_display, sparse_flows_2_display,
+                                                                dense_flows_2_display],
+                                                    return_image=True)
+            cv2.imwrite(str(log_root / "{}.png".format(batch)),
+                        cv2.cvtColor(np.uint8(image_display * 255), cv2.COLOR_RGB2BGR))
 
     tq.close()
     writer.close()
