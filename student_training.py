@@ -60,10 +60,10 @@ if __name__ == '__main__':
     parser.add_argument('--use_hsv_colorspace', action='store_true',
                         help='convert RGB to hsv colorspace')
     parser.add_argument('--training_result_root', type=str, help='root of the training input and ouput')
+    parser.add_argument('--training_data_root', type=str, help='path to the training data')
     parser.add_argument('--architecture_summary', action='store_true', help='display the network architecture')
     parser.add_argument('--trained_student_model_path', type=str, default=None,
                         help='path to the trained student model')
-    parser.add_argument('--training_data_root', type=str, help='path to the training data')
 
     args = parser.parse_args()
 
@@ -156,22 +156,24 @@ if __name__ == '__main__':
     # Build training and validation dataset
     train_dataset = dataset.SfMDataset(image_file_names=train_filenames,
                                        folder_list=training_folder_list + val_folder_list,
-                                       adjacent_range=adjacent_range, to_augment=True, transform=training_transforms,
+                                       adjacent_range=adjacent_range, transform=training_transforms,
                                        downsampling=input_downsampling,
                                        network_downsampling=network_downsampling, inlier_percentage=inlier_percentage,
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
-                                       phase="train", is_hsv=is_hsv)
+                                       phase="train", is_hsv=is_hsv,
+                                       num_pre_workers=num_workers, visible_interval=20)
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
                                             folder_list=training_folder_list + val_folder_list,
-                                            adjacent_range=adjacent_range, to_augment=True,
+                                            adjacent_range=adjacent_range,
                                             transform=None,
                                             downsampling=input_downsampling,
                                             network_downsampling=network_downsampling,
                                             inlier_percentage=inlier_percentage,
                                             use_store_data=True,
                                             store_data_root=training_data_root,
-                                            phase="validation", is_hsv=is_hsv)
+                                            phase="validation", is_hsv=is_hsv,
+                                            num_pre_workers=num_workers, visible_interval=20)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=num_workers)
