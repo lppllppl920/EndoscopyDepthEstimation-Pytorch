@@ -861,7 +861,7 @@ def draw_flow(flows):
     hsv = np.zeros((h, w, 3), np.uint8)
     hsv[..., 0] = ang * (180 / np.pi / 2)
     hsv[..., 1] = 255
-    hsv[..., 2] = np.uint8(np.minimum(v, 0.5) * 255)
+    hsv[..., 2] = np.uint8(np.minimum(v, 0.2) * 255)
     return cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
 
 
