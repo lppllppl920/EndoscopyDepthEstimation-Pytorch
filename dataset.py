@@ -115,20 +115,15 @@ def pre_processing_data(process_id, folder_list, downsampling, network_downsampl
 
 
 class SfMDataset(Dataset):
-    def __init__(self, image_file_names, folder_list, adjacent_range=(1, 10), to_augment=True,
-                 transform=None,
-                 downsampling=1.0, network_downsampling=64, inlier_percentage=0.99, visible_interval=20,
-                 use_store_data=False,
-                 store_data_root=None, phase="train",
-                 is_hsv=True, num_pre_workers=12):
+    def __init__(self, image_file_names, folder_list, adjacent_range,
+                 transform, downsampling, network_downsampling, inlier_percentage, visible_interval,
+                 use_store_data, store_data_root, phase, is_hsv, num_pre_workers):
         self.image_file_names = image_file_names
         self.folder_list = folder_list
-        self.to_augment = to_augment
         self.transform = transform
         assert (len(adjacent_range) == 2)
         self.adjacent_range = adjacent_range
         self.transform = transform
-        self.to_augment = to_augment
         self.is_hsv = is_hsv
         self.inlier_percentage = inlier_percentage
         self.downsampling = downsampling
@@ -419,52 +414,38 @@ class SfMDataset(Dataset):
             mask_boundary[mask_boundary <= 0.9] = 0.0
             mask_boundary = mask_boundary.reshape((mask_boundary.shape[0], mask_boundary.shape[1], 1))
 
-            if self.to_augment:
-                if self.phase == 'train':
-                    if self.transform is not None:
-                        if self.is_hsv:
-                            color_img_1 = cv2.cvtColor(np.uint8(color_img_1), cv2.COLOR_HSV2BGR_FULL)
-                            color_img_2 = cv2.cvtColor(np.uint8(color_img_2), cv2.COLOR_HSV2BGR_FULL)
-                        # Data augmentation
-                        color_img_1 = self.transform(image=color_img_1)['image']
-                        color_img_2 = self.transform(image=color_img_2)['image']
-                        if self.is_hsv:
-                            color_img_1 = cv2.cvtColor(np.uint8(color_img_1),
-                                                       cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
-                            color_img_2 = cv2.cvtColor(np.uint8(color_img_2),
-                                                       cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
-                    # Normalize
-                    color_img_1 = self.normalize(image=color_img_1)['image']
-                    color_img_2 = self.normalize(image=color_img_2)['image']
-                elif self.phase == 'validation':
-                    # Normalize
-                    color_img_1 = self.normalize(image=color_img_1)['image']
-                    color_img_2 = self.normalize(image=color_img_2)['image']
-
             if self.phase == 'train':
-                return [img_to_tensor(color_img_1), img_to_tensor(color_img_2),
-                        img_to_tensor(sparse_depth_img_1), img_to_tensor(sparse_depth_img_2),
-                        img_to_tensor(mask_img_1), img_to_tensor(mask_img_2),
-                        img_to_tensor(flow_img_1), img_to_tensor(flow_img_2),
-                        img_to_tensor(flow_mask_img_1), img_to_tensor(flow_mask_img_2),
-                        img_to_tensor(mask_boundary),
-                        torch.from_numpy(rotation_1_wrt_2),
-                        torch.from_numpy(rotation_2_wrt_1), torch.from_numpy(translation_1_wrt_2),
-                        torch.from_numpy(translation_2_wrt_1), torch.from_numpy(intrinsic_matrix),
-                        folder]
-            elif self.phase == 'validation':
-                return [img_to_tensor(color_img_1), img_to_tensor(color_img_2),
-                        img_to_tensor(sparse_depth_img_1), img_to_tensor(sparse_depth_img_2),
-                        img_to_tensor(mask_img_1), img_to_tensor(mask_img_2),
-                        img_to_tensor(flow_img_1), img_to_tensor(flow_img_2),
-                        img_to_tensor(flow_mask_img_1), img_to_tensor(flow_mask_img_2),
-                        img_to_tensor(mask_boundary),
-                        torch.from_numpy(rotation_1_wrt_2),
-                        torch.from_numpy(rotation_2_wrt_1), torch.from_numpy(translation_1_wrt_2),
-                        torch.from_numpy(translation_2_wrt_1), torch.from_numpy(intrinsic_matrix),
-                        folder]
+                if self.transform is not None:
+                    if self.is_hsv:
+                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1), cv2.COLOR_HSV2BGR_FULL)
+                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2), cv2.COLOR_HSV2BGR_FULL)
+                    # Data augmentation
+                    color_img_1 = self.transform(image=color_img_1)['image']
+                    color_img_2 = self.transform(image=color_img_2)['image']
+                    if self.is_hsv:
+                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1),
+                                                   cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
+                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2),
+                                                   cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
+                # Normalize
+                color_img_1 = self.normalize(image=color_img_1)['image']
+                color_img_2 = self.normalize(image=color_img_2)['image']
             else:
-                return
+                # Normalize
+                color_img_1 = self.normalize(image=color_img_1)['image']
+                color_img_2 = self.normalize(image=color_img_2)['image']
+
+            return [img_to_tensor(color_img_1), img_to_tensor(color_img_2),
+                    img_to_tensor(sparse_depth_img_1), img_to_tensor(sparse_depth_img_2),
+                    img_to_tensor(mask_img_1), img_to_tensor(mask_img_2),
+                    img_to_tensor(flow_img_1), img_to_tensor(flow_img_2),
+                    img_to_tensor(flow_mask_img_1), img_to_tensor(flow_mask_img_2),
+                    img_to_tensor(mask_boundary),
+                    torch.from_numpy(rotation_1_wrt_2),
+                    torch.from_numpy(rotation_2_wrt_1), torch.from_numpy(translation_1_wrt_2),
+                    torch.from_numpy(translation_2_wrt_1), torch.from_numpy(intrinsic_matrix),
+                    folder]
+
         elif self.phase == 'test':
             img_file_name = self.image_file_names[idx]
             # Retrieve the folder path
@@ -472,8 +453,11 @@ class SfMDataset(Dataset):
             start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
             color_img_1 = utils.get_test_color_img(img_file_name, start_h, end_h, start_w, end_w,
                                                    self.downsampling, self.is_hsv)
-            if self.to_augment:
+            if self.transform is not None:
                 color_img_1 = self.transform(image=color_img_1)['image']
+            # Normalize
+            color_img_1 = self.normalize(image=color_img_1)['image']
+
             intrinsic_matrix = self.intrinsic_matrix_per_seq[folder][:3, :3]
             intrinsic_matrix = intrinsic_matrix.astype(np.float32)
             intrinsic_matrix = intrinsic_matrix.reshape((3, 3))
@@ -487,5 +471,3 @@ class SfMDataset(Dataset):
                     img_to_tensor(mask_boundary),
                     torch.from_numpy(intrinsic_matrix),
                     img_file_name[-12:-4]]
-        else:
-            return

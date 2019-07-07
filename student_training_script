@@ -89,3 +89,83 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Traini
 "/home/xliu89/RemoteData/Sinus Project Data/xingtong/Training"
 --training_data_root
 "/home/xliu89/RemoteData/Sinus Project Data/xingtong/FullLengthEndoscopicVIdeoData"
+
+## sparse depth only
+--adjacent_range
+5
+30
+--id_range
+1
+11
+--input_downsampling
+4.0
+--torchsummary_input_size
+256
+320
+--batch_size
+8
+--num_workers
+8
+--sdl_weight
+1.0
+--max_lr
+1.0e-3
+--min_lr
+1.0e-4
+--network_downsampling
+64
+--inlier_percentage
+0.99
+--validation_interval
+1
+--display_interval
+50
+--testing_patient_id
+4
+--load_intermediate_data
+--num_iter
+1000
+--number_epoch
+400
+--use_hsv_colorspace
+--architecture_summary
+--training_result_root
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/Training"
+--training_data_root
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/FullLengthEndoscopicVIdeoData"
+
+## Image generation
+--adjacent_range
+20
+30
+--id_range
+1
+11
+--input_downsampling
+4.0
+--torchsummary_input_size
+256
+320
+--batch_size
+1
+--num_workers
+1
+--network_downsampling
+64
+--inlier_percentage
+0.99
+--testing_patient_id
+4
+--load_intermediate_data
+--num_iter
+1000
+--number_epoch
+400
+--use_hsv_colorspace
+--architecture_summary
+--training_result_root
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/Evaluation"
+--training_data_root
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/FullLengthEndoscopicVIdeoData"
+--sequence_root
+""

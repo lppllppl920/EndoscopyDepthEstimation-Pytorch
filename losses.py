@@ -105,3 +105,25 @@ class NormalizedL2Loss(nn.Module):
             intersect_masks * (depth_maps * depth_maps + warped_depth_maps * warped_depth_maps), dim=(1, 2, 3),
             keepdim=False) + 1.0e-3 * mean_value)
         return torch.mean(loss)
+
+
+class MaskedScaleInvariantLoss(nn.Module):
+    def __init__(self, epsilon=1.0e-8):
+        super(MaskedScaleInvariantLoss, self).__init__()
+        self.epsilon = torch.tensor(epsilon).float().cuda()
+        self.zero = torch.tensor(0.0).float().cuda()
+
+    def forward(self, x):
+        absolute_depth_estimations, input_sparse_depths, input_sparse_masks = x
+
+        depth_ratio_map = torch.where(input_sparse_depths < 0.5, self.zero,
+                                      torch.log(absolute_depth_estimations + self.epsilon) -
+                                      torch.log(input_sparse_depths))
+
+        weighted_sum = torch.sum(input_sparse_masks, dim=(1, 2, 3))
+        loss_1 = torch.sum(torch.mul(input_sparse_masks, depth_ratio_map * depth_ratio_map),
+                           dim=(1, 2, 3)) / weighted_sum
+        sum_2 = torch.sum(torch.mul(input_sparse_masks, depth_ratio_map), dim=(1, 2, 3))
+        loss_2 = (sum_2 * sum_2) / (weighted_sum * weighted_sum)
+
+        return torch.mean(loss_1 + loss_2)

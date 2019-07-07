@@ -31,7 +31,7 @@ import scheduler
 if __name__ == '__main__':
     cv2.destroyAllWindows()
     parser = argparse.ArgumentParser(
-        description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset -- Student Training',
+        description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset -- Student Training with Sparse Depth Map Only',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--adjacent_range', nargs='+', type=int, help='interval range for a pair of video frames')
     parser.add_argument('--id_range', nargs='+', type=int, help='id range for the training and testing dataset')
@@ -41,8 +41,7 @@ if __name__ == '__main__':
                         help='input size for torchsummary (analysis purpose only)')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size for training and testing')
     parser.add_argument('--num_workers', type=int, default=8, help='number of workers for input data loader')
-    parser.add_argument('--dcl_weight', type=float, default=1.0, help='weight for depth consistency loss')
-    parser.add_argument('--sfl_weight', type=float, default=100.0, help='weight for sparse flow loss')
+    parser.add_argument('--sdl_weight', type=float, default=1.0, help='weight for sparse depth loss')
     parser.add_argument('--max_lr', type=float, default=1.0e-3, help='upper bound learning rate for cyclic lr')
     parser.add_argument('--min_lr', type=float, default=1.0e-4, help='lower bound learning rate for cyclic lr')
     parser.add_argument('--num_iter', type=int, default=1000, help='number of iterations per epoch')
@@ -60,10 +59,10 @@ if __name__ == '__main__':
     parser.add_argument('--use_hsv_colorspace', action='store_true',
                         help='convert RGB to hsv colorspace')
     parser.add_argument('--training_result_root', type=str, help='root of the training input and ouput')
-    parser.add_argument('--training_data_root', type=str, help='path to the training data')
     parser.add_argument('--architecture_summary', action='store_true', help='display the network architecture')
     parser.add_argument('--trained_student_model_path', type=str, default=None,
                         help='path to the trained student model')
+    parser.add_argument('--training_data_root', type=str, help='path to the training data')
 
     args = parser.parse_args()
 
@@ -84,8 +83,7 @@ if __name__ == '__main__':
         width = 320
     batch_size = args.batch_size
     num_workers = args.num_workers
-    depth_consistency_weight = args.dcl_weight
-    sparse_flow_weight = args.sfl_weight
+    sparse_depth_weight = args.sdl_weight
     max_lr = args.max_lr
     min_lr = args.min_lr
     num_iter = args.num_iter
@@ -156,24 +154,22 @@ if __name__ == '__main__':
     # Build training and validation dataset
     train_dataset = dataset.SfMDataset(image_file_names=train_filenames,
                                        folder_list=training_folder_list + val_folder_list,
-                                       adjacent_range=adjacent_range, transform=training_transforms,
+                                       adjacent_range=adjacent_range, to_augment=True, transform=training_transforms,
                                        downsampling=input_downsampling,
                                        network_downsampling=network_downsampling, inlier_percentage=inlier_percentage,
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
-                                       phase="train", is_hsv=is_hsv,
-                                       num_pre_workers=num_workers, visible_interval=20)
+                                       phase="train", is_hsv=is_hsv)
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
                                             folder_list=training_folder_list + val_folder_list,
-                                            adjacent_range=adjacent_range,
+                                            adjacent_range=adjacent_range, to_augment=True,
                                             transform=None,
                                             downsampling=input_downsampling,
                                             network_downsampling=network_downsampling,
                                             inlier_percentage=inlier_percentage,
                                             use_store_data=True,
                                             store_data_root=training_data_root,
-                                            phase="validation", is_hsv=is_hsv,
-                                            num_pre_workers=num_workers, visible_interval=20)
+                                            phase="validation", is_hsv=is_hsv)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=num_workers)
@@ -194,13 +190,8 @@ if __name__ == '__main__':
     optimizer = torch.optim.SGD(depth_estimation_model_student.parameters(), lr=max_lr, momentum=0.9)
     lr_scheduler = scheduler.CyclicLR(optimizer, base_lr=min_lr, max_lr=max_lr, step_size=num_iter)
 
-    # Custom layers
-    depth_scaling_layer = models.DepthScalingLayer(epsilon=depth_scaling_epsilon)
-    depth_warping_layer = models.DepthWarpingLayer(epsilon=depth_warping_epsilon)
-    flow_from_depth_layer = models.FlowfromDepthLayer()
     # Loss functions
-    sparse_flow_loss_function = losses.SparseMaskedL1Loss()
-    depth_consistency_loss_function = losses.NormalizedL2Loss()
+    sparse_depth_loss_function = losses.MaskedScaleInvariantLoss()
 
     # Load previous student model, lr scheduler, and so on
     if load_trained_student_model:
@@ -228,9 +219,7 @@ if __name__ == '__main__':
         # Update progress bar
         tq = tqdm.tqdm(total=len(train_loader) * batch_size, dynamic_ncols=True, ncols=40)
         # Variable initialization
-        mean_loss = 0.0
-        mean_depth_consistency_loss = 0.0
-        mean_sparse_flow_loss = 0.0
+        mean_sparse_depth_loss = 0.0
 
         for batch, (
                 colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1, sparse_depth_masks_2,
@@ -251,16 +240,7 @@ if __name__ == '__main__':
                 sparse_depths_2 = sparse_depths_2.cuda()
                 sparse_depth_masks_1 = sparse_depth_masks_1.cuda()
                 sparse_depth_masks_2 = sparse_depth_masks_2.cuda()
-                sparse_flows_1 = sparse_flows_1.cuda()
-                sparse_flows_2 = sparse_flows_2.cuda()
-                sparse_flow_masks_1 = sparse_flow_masks_1.cuda()
-                sparse_flow_masks_2 = sparse_flow_masks_2.cuda()
                 boundaries = boundaries.cuda()
-                rotations_1_wrt_2 = rotations_1_wrt_2.cuda()
-                rotations_2_wrt_1 = rotations_2_wrt_1.cuda()
-                translations_1_wrt_2 = translations_1_wrt_2.cuda()
-                translations_2_wrt_1 = translations_2_wrt_1.cuda()
-                intrinsics = intrinsics.cuda()
 
             colors_1 = boundaries * colors_1
             colors_2 = boundaries * colors_2
@@ -269,42 +249,10 @@ if __name__ == '__main__':
             predicted_depth_maps_1 = depth_estimation_model_student(colors_1)
             predicted_depth_maps_2 = depth_estimation_model_student(colors_2)
 
-            scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
-                [torch.abs(predicted_depth_maps_1), sparse_depths_1, sparse_depth_masks_1])
-            scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
-                [torch.abs(predicted_depth_maps_2), sparse_depths_2, sparse_depth_masks_2])
-
-            # Sparse flow loss
-            # Flow maps calculated using predicted dense depth maps and camera poses
-            # should agree with the sparse flows of feature points from SfM
-            flows_from_depth_1 = flow_from_depth_layer(
-                [scaled_depth_maps_1, boundaries, translations_1_wrt_2, rotations_1_wrt_2,
-                 intrinsics])
-            flows_from_depth_2 = flow_from_depth_layer(
-                [scaled_depth_maps_2, boundaries, translations_2_wrt_1, rotations_2_wrt_1,
-                 intrinsics])
-            sparse_flow_masks_1 = sparse_flow_masks_1 * boundaries
-            sparse_flow_masks_2 = sparse_flow_masks_2 * boundaries
-            sparse_flows_1 = sparse_flows_1 * boundaries
-            sparse_flows_2 = sparse_flows_2 * boundaries
-            flows_from_depth_1 = flows_from_depth_1 * boundaries
-            flows_from_depth_2 = flows_from_depth_2 * boundaries
-
-            sparse_flow_loss = sparse_flow_weight * 0.5 * (sparse_flow_loss_function(
-                [sparse_flows_1, flows_from_depth_1, sparse_flow_masks_1]) + sparse_flow_loss_function(
-                [sparse_flows_2, flows_from_depth_2, sparse_flow_masks_2]))
-
-            # Depth consistency loss
-            warped_depth_maps_2_to_1, intersect_masks_1 = depth_warping_layer(
-                [scaled_depth_maps_1, scaled_depth_maps_2, boundaries, translations_1_wrt_2, rotations_1_wrt_2,
-                 intrinsics])
-            warped_depth_maps_1_to_2, intersect_masks_2 = depth_warping_layer(
-                [scaled_depth_maps_2, scaled_depth_maps_1, boundaries, translations_2_wrt_1, rotations_2_wrt_1,
-                 intrinsics])
-            depth_consistency_loss = depth_consistency_weight * 0.5 * (depth_consistency_loss_function(
-                [scaled_depth_maps_1, warped_depth_maps_2_to_1, intersect_masks_1]) + depth_consistency_loss_function(
-                [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2]))
-            loss = depth_consistency_loss + sparse_flow_loss
+            sparse_depth_loss = sparse_depth_weight * 0.5 * (
+                    sparse_depth_loss_function([predicted_depth_maps_1, sparse_depths_1, sparse_depth_masks_1]) +
+                    sparse_depth_loss_function([predicted_depth_maps_2, sparse_depths_2, sparse_depth_masks_2]))
+            loss = sparse_depth_loss
 
             if math.isnan(loss.item()) or math.isinf(loss.item()):
                 optimizer.zero_grad()
@@ -319,57 +267,41 @@ if __name__ == '__main__':
                 torch.nn.utils.clip_grad_norm_(depth_estimation_model_student.parameters(), 10.0)
                 optimizer.step()
                 if batch == 0:
-                    mean_loss = loss.item()
-                    mean_depth_consistency_loss = depth_consistency_loss.item()
-                    mean_sparse_flow_loss = sparse_flow_loss.item()
+                    mean_sparse_depth_loss = sparse_depth_loss.item()
                 else:
-                    mean_loss = (mean_loss * batch + loss.item()) / (batch + 1.0)
-                    mean_depth_consistency_loss = (mean_depth_consistency_loss * batch +
-                                                   depth_consistency_loss.item()) / (batch + 1.0)
-                    mean_sparse_flow_loss = (mean_sparse_flow_loss * batch + sparse_flow_loss.item()) / (batch + 1.0)
+                    mean_sparse_depth_loss = (mean_sparse_depth_loss * batch + sparse_depth_loss.item()) / (batch + 1.0)
 
             step += 1
             tq.update(batch_size)
-            tq.set_postfix(loss='avg: {:.5f} cur: {:.5f}'.format(mean_loss, loss.item()),
-                           loss_depth_consistency='avg: {:.5f} cur: {:.5f}'.format(
-                               mean_depth_consistency_loss,
-                               depth_consistency_loss.item()),
-                           loss_sparse_flow='avg: {:.5f} cur: {:.5f}'.format(
-                               mean_sparse_flow_loss,
-                               sparse_flow_loss.item()))
-            writer.add_scalars('Training', {'overall': mean_loss,
-                                            'depth_consistency': mean_depth_consistency_loss,
-                                            'sparse_flow': mean_sparse_flow_loss}, step)
+            tq.set_postfix(loss_sparse_depth='avg: {:.5f} cur: {:.5f}'.format(
+                mean_sparse_depth_loss,
+                sparse_depth_loss.item()))
+            writer.add_scalars('Training', {'sparse_depth': mean_sparse_depth_loss}, step)
 
             # Display depth and color at TensorboardX
             if batch % display_each == 0:
-                colors_1_display, pred_depths_1_display, sparse_flows_1_display, dense_flows_1_display = \
-                    utils.display_color_depth_sparse_flow_dense_flow(1, step, writer, colors_1,
-                                                                     scaled_depth_maps_1 * boundaries,
-                                                                     sparse_flows_1, flows_from_depth_1,
-                                                                     phase="Training", is_return_image=True,
-                                                                     color_reverse=True)
-                colors_2_display, pred_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
-                    utils.display_color_depth_sparse_flow_dense_flow(2, step, writer, colors_2,
-                                                                     scaled_depth_maps_2 * boundaries,
-                                                                     sparse_flows_2, flows_from_depth_2,
-                                                                     phase="Training", is_return_image=True,
-                                                                     color_reverse=True)
-                utils.stack_and_display(phase="Training", title="Results (c1, d1, sf1, df1, c2, d2, sf2, df2)",
+                colors_1_display, pred_depths_1_display, sparse_depths_1_display = utils.display_color_pred_depth_sparse_depth(
+                    idx=1, step=step, writer=writer, colors_1=colors_1,
+                    pred_depth_maps_1=predicted_depth_maps_1,
+                    sparse_depth_maps_1=sparse_depths_1,
+                    phase="Training", return_image=True)
+                colors_2_display, pred_depths_2_display, sparse_depths_2_display = utils.display_color_pred_depth_sparse_depth(
+                    idx=2, step=step, writer=writer, colors_1=colors_2,
+                    pred_depth_maps_1=predicted_depth_maps_2,
+                    sparse_depth_maps_1=sparse_depths_2,
+                    phase="Training", return_image=True)
+
+                utils.stack_and_display(phase="Training", title="Results (c1, d1, sd1, c2, d2, sd2)",
                                         step=step, writer=writer,
-                                        image_list=[colors_1_display, pred_depths_1_display, sparse_flows_1_display,
-                                                    dense_flows_1_display,
-                                                    colors_2_display, pred_depths_2_display, sparse_flows_2_display,
-                                                    dense_flows_2_display])
+                                        image_list=[colors_1_display, pred_depths_1_display, sparse_depths_1_display,
+                                                    colors_2_display, pred_depths_2_display, sparse_depths_2_display])
         tq.close()
 
         # Save student model
         if epoch % validation_each != 0:
             continue
 
-        mean_loss = 0.0
-        mean_depth_consistency_loss = 0.0
-        mean_sparse_flow_loss = 0.0
+        mean_sparse_depth_loss = 0.0
         tq = tqdm.tqdm(total=len(validation_loader) * batch_size, dynamic_ncols=True, ncols=40)
         tq.set_description('Validation Epoch {}'.format(epoch))
         with torch.no_grad():
@@ -386,16 +318,7 @@ if __name__ == '__main__':
                 sparse_depths_2 = sparse_depths_2.cuda()
                 sparse_depth_masks_1 = sparse_depth_masks_1.cuda()
                 sparse_depth_masks_2 = sparse_depth_masks_2.cuda()
-                sparse_flows_1 = sparse_flows_1.cuda()
-                sparse_flows_2 = sparse_flows_2.cuda()
-                sparse_flow_masks_1 = sparse_flow_masks_1.cuda()
-                sparse_flow_masks_2 = sparse_flow_masks_2.cuda()
                 boundaries = boundaries.cuda()
-                rotations_1_wrt_2 = rotations_1_wrt_2.cuda()
-                rotations_2_wrt_1 = rotations_2_wrt_1.cuda()
-                translations_1_wrt_2 = translations_1_wrt_2.cuda()
-                translations_2_wrt_1 = translations_2_wrt_1.cuda()
-                intrinsics = intrinsics.cuda()
 
                 colors_1 = boundaries * colors_1
                 colors_2 = boundaries * colors_2
@@ -403,88 +326,46 @@ if __name__ == '__main__':
                 # Predicted depth from student model
                 predicted_depth_maps_1 = depth_estimation_model_student(colors_1)
                 predicted_depth_maps_2 = depth_estimation_model_student(colors_2)
-                scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
-                    [torch.abs(predicted_depth_maps_1), sparse_depths_1, sparse_depth_masks_1])
-                scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
-                    [torch.abs(predicted_depth_maps_2), sparse_depths_2, sparse_depth_masks_2])
 
-                # Sparse optical flow loss
-                # Optical flow maps calculated using predicted dense depth maps and camera poses
-                # should agree with the sparse optical flows of feature points from SfM
-                flows_from_depth_1 = flow_from_depth_layer(
-                    [scaled_depth_maps_1, boundaries, translations_1_wrt_2, rotations_1_wrt_2,
-                     intrinsics])
-                flows_from_depth_2 = flow_from_depth_layer(
-                    [scaled_depth_maps_2, boundaries, translations_2_wrt_1, rotations_2_wrt_1,
-                     intrinsics])
-                sparse_flow_masks_1 = sparse_flow_masks_1 * boundaries
-                sparse_flow_masks_2 = sparse_flow_masks_2 * boundaries
-                sparse_flows_1 = sparse_flows_1 * boundaries
-                sparse_flows_2 = sparse_flows_2 * boundaries
-                flows_from_depth_1 = flows_from_depth_1 * boundaries
-                flows_from_depth_2 = flows_from_depth_2 * boundaries
-                sparse_flow_loss = 0.5 * (sparse_flow_loss_function(
-                    [sparse_flows_1, flows_from_depth_1, sparse_flow_masks_1]) + sparse_flow_loss_function(
-                    [sparse_flows_2, flows_from_depth_2, sparse_flow_masks_2]))
-
-                # Depth consistency loss
-                warped_depth_maps_2_to_1, intersect_masks_1 = depth_warping_layer(
-                    [scaled_depth_maps_1, scaled_depth_maps_2, boundaries, translations_1_wrt_2, rotations_1_wrt_2,
-                     intrinsics])
-                warped_depth_maps_1_to_2, intersect_masks_2 = depth_warping_layer(
-                    [scaled_depth_maps_2, scaled_depth_maps_1, boundaries, translations_2_wrt_1, rotations_2_wrt_1,
-                     intrinsics])
-                depth_consistency_loss = 0.5 * (depth_consistency_loss_function(
-                    [scaled_depth_maps_1, warped_depth_maps_2_to_1,
-                     intersect_masks_1]) + depth_consistency_loss_function(
-                    [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2]))
-
-                loss = depth_consistency_loss + sparse_flow_loss
+                sparse_depth_loss = sparse_depth_weight * 0.5 * (
+                        sparse_depth_loss_function([predicted_depth_maps_1, sparse_depths_1, sparse_depth_masks_1]) +
+                        sparse_depth_loss_function([predicted_depth_maps_2, sparse_depths_2, sparse_depth_masks_2]))
+                loss = sparse_depth_loss
                 tq.update(batch_size)
-                if not np.isnan(loss.item()):
+                if not np.isnan(loss.item()) and not np.isinf(loss.item()):
                     if batch == 0:
-                        mean_loss = loss.item()
-                        mean_depth_consistency_loss = depth_consistency_loss.item()
-                        mean_sparse_flow_loss = sparse_flow_loss.item()
+                        mean_sparse_depth_loss = sparse_depth_loss.item()
                     else:
-                        mean_loss = (mean_loss * batch + loss.item()) / (batch + 1.0)
-                        mean_depth_consistency_loss = (mean_depth_consistency_loss * batch +
-                                                       depth_consistency_loss.item()) / (batch + 1.0)
-                        mean_sparse_flow_loss = (mean_sparse_flow_loss * batch + sparse_flow_loss.item()) / (
+                        mean_sparse_depth_loss = (mean_sparse_depth_loss * batch + sparse_depth_loss.item()) / (
                                 batch + 1.0)
 
                 # Display depth and color at TensorboardX
                 if batch % display_each == 0:
-                    colors_1_display, pred_depths_1_display, sparse_flows_1_display, dense_flows_1_display = \
-                        utils.display_color_depth_sparse_flow_dense_flow(1, step, writer, colors_1,
-                                                                         scaled_depth_maps_1 * boundaries,
-                                                                         sparse_flows_1, flows_from_depth_1,
-                                                                         phase="Validation", is_return_image=True,
-                                                                         color_reverse=True)
-                    colors_2_display, pred_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
-                        utils.display_color_depth_sparse_flow_dense_flow(2, step, writer, colors_2,
-                                                                         scaled_depth_maps_2 * boundaries,
-                                                                         sparse_flows_2, flows_from_depth_2,
-                                                                         phase="Validation", is_return_image=True,
-                                                                         color_reverse=True)
-                    utils.stack_and_display(phase="Validation", title="Results (c1, d1, sf1, df1, c2, d2, sf2, df2)",
+                    colors_1_display, pred_depths_1_display, sparse_depths_1_display = utils.display_color_pred_depth_sparse_depth(
+                        idx=1, step=step, writer=writer, colors_1=colors_1,
+                        pred_depth_maps_1=predicted_depth_maps_1,
+                        sparse_depth_maps_1=sparse_depths_1,
+                        phase="Training", return_image=True)
+                    colors_2_display, pred_depths_2_display, sparse_depths_2_display = utils.display_color_pred_depth_sparse_depth(
+                        idx=2, step=step, writer=writer, colors_1=colors_2,
+                        pred_depth_maps_1=predicted_depth_maps_2,
+                        sparse_depth_maps_1=sparse_depths_2,
+                        phase="Training", return_image=True)
+                    utils.stack_and_display(phase="Training", title="Results (c1, d1, sd1, c2, d2, sd2)",
                                             step=step, writer=writer,
-                                            image_list=[colors_1_display, pred_depths_1_display, sparse_flows_1_display,
-                                                        dense_flows_1_display,
-                                                        colors_2_display, pred_depths_2_display, sparse_flows_2_display,
-                                                        dense_flows_2_display])
-
+                                            image_list=[colors_1_display, pred_depths_1_display,
+                                                        sparse_depths_1_display,
+                                                        colors_2_display, pred_depths_2_display,
+                                                        sparse_depths_2_display])
                 # TensorboardX
-                writer.add_scalars('Validation', {'overall': mean_loss,
-                                                  'depth_consistency': mean_depth_consistency_loss,
-                                                  'sparse_flow': mean_sparse_flow_loss}, epoch)
+                writer.add_scalars('Validation', {'sparse_depth': mean_sparse_depth_loss}, epoch)
 
         tq.close()
-        model_path_epoch = log_root / 'checkpoint_model_epoch_{}_validation_{}.pt'.format(epoch,
-                                                                                          mean_sparse_flow_loss)
+        model_path_epoch = log_root / 'checkpoint_model_epoch_{}_validation_{}_sparse_depth_only.pt'.format(epoch,
+                                                                                                            mean_sparse_depth_loss)
         utils.save_model(model=depth_estimation_model_student, optimizer=optimizer,
                          epoch=epoch + 1, step=step, model_path=model_path_epoch,
-                         validation_loss=mean_sparse_flow_loss)
+                         validation_loss=mean_sparse_depth_loss)
         writer.export_scalars_to_json(
             str(log_root / ("all_scalars_" + str(epoch) + ".json")))
 
