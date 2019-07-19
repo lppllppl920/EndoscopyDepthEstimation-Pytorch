@@ -53,14 +53,14 @@ if __name__ == '__main__':
     parser.add_argument('--display_interval', type=int, default=10, help='iteration interval for image display')
     parser.add_argument('--testing_patient_id', type=int, help='id of the testing patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
-    parser.add_argument('--load_trained_student_model', action='store_true',
+    parser.add_argument('--load_trained_model', action='store_true',
                         help='whether to load trained student model')
     parser.add_argument('--number_epoch', type=int, help='number of epochs in total')
     parser.add_argument('--use_hsv_colorspace', action='store_true',
                         help='convert RGB to hsv colorspace')
     parser.add_argument('--training_result_root', type=str, help='root of the training input and ouput')
     parser.add_argument('--architecture_summary', action='store_true', help='display the network architecture')
-    parser.add_argument('--trained_student_model_path', type=str, default=None,
+    parser.add_argument('--trained_model_path', type=str, default=None,
                         help='path to the trained student model')
     parser.add_argument('--training_data_root', type=str, help='path to the training data')
 
@@ -96,12 +96,12 @@ if __name__ == '__main__':
     display_each = args.display_interval
     testing_patient_id = args.testing_patient_id
     load_intermediate_data = args.load_intermediate_data
-    load_trained_student_model = args.load_trained_student_model
+    load_trained_model = args.load_trained_model
     n_epochs = args.number_epoch
     is_hsv = args.use_hsv_colorspace
     training_result_root = args.training_result_root
     display_architecture = args.architecture_summary
-    trained_student_model_path = args.trained_student_model_path
+    trained_model_path = args.trained_model_path
     training_data_root = Path(args.training_data_root)
     id_range = args.id_range
     currentDT = datetime.datetime.now()
@@ -154,22 +154,23 @@ if __name__ == '__main__':
     # Build training and validation dataset
     train_dataset = dataset.SfMDataset(image_file_names=train_filenames,
                                        folder_list=training_folder_list + val_folder_list,
-                                       adjacent_range=adjacent_range, to_augment=True, transform=training_transforms,
+                                       adjacent_range=adjacent_range, transform=training_transforms,
                                        downsampling=input_downsampling,
                                        network_downsampling=network_downsampling, inlier_percentage=inlier_percentage,
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
-                                       phase="train", is_hsv=is_hsv)
+                                       phase="train", is_hsv=is_hsv, num_pre_workers=12, visible_interval=20)
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
                                             folder_list=training_folder_list + val_folder_list,
-                                            adjacent_range=adjacent_range, to_augment=True,
+                                            adjacent_range=adjacent_range,
                                             transform=None,
                                             downsampling=input_downsampling,
                                             network_downsampling=network_downsampling,
                                             inlier_percentage=inlier_percentage,
                                             use_store_data=True,
                                             store_data_root=training_data_root,
-                                            phase="validation", is_hsv=is_hsv)
+                                            phase="validation", is_hsv=is_hsv,
+                                            num_pre_workers=12, visible_interval=20)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=num_workers)
@@ -191,13 +192,15 @@ if __name__ == '__main__':
     lr_scheduler = scheduler.CyclicLR(optimizer, base_lr=min_lr, max_lr=max_lr, step_size=num_iter)
 
     # Loss functions
-    sparse_depth_loss_function = losses.MaskedScaleInvariantLoss()
+    sparse_depth_loss_function = losses.NormalizedL1Loss()
+    # Custom layers
+    depth_scaling_layer = models.DepthScalingLayer(epsilon=depth_scaling_epsilon)
 
     # Load previous student model, lr scheduler, and so on
-    if load_trained_student_model:
-        if Path(trained_student_model_path).exists():
-            print("Loading {:s} ...".format(trained_student_model_path))
-            state = torch.load(trained_student_model_path)
+    if load_trained_model:
+        if Path(trained_model_path).exists():
+            print("Loading {:s} ...".format(trained_model_path))
+            state = torch.load(trained_model_path)
             step = state['step']
             epoch = state['epoch']
             depth_estimation_model_student.load_state_dict(state['model'])
@@ -248,6 +251,11 @@ if __name__ == '__main__':
             # Predicted depth from student model
             predicted_depth_maps_1 = depth_estimation_model_student(colors_1)
             predicted_depth_maps_2 = depth_estimation_model_student(colors_2)
+
+            scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
+                [predicted_depth_maps_1, sparse_depths_1, sparse_depth_masks_1])
+            scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
+                [predicted_depth_maps_2, sparse_depths_2, sparse_depth_masks_2])
 
             sparse_depth_loss = sparse_depth_weight * 0.5 * (
                     sparse_depth_loss_function([predicted_depth_maps_1, sparse_depths_1, sparse_depth_masks_1]) +
@@ -345,13 +353,13 @@ if __name__ == '__main__':
                         idx=1, step=step, writer=writer, colors_1=colors_1,
                         pred_depth_maps_1=predicted_depth_maps_1,
                         sparse_depth_maps_1=sparse_depths_1,
-                        phase="Training", return_image=True)
+                        phase="Validation", return_image=True)
                     colors_2_display, pred_depths_2_display, sparse_depths_2_display = utils.display_color_pred_depth_sparse_depth(
                         idx=2, step=step, writer=writer, colors_1=colors_2,
                         pred_depth_maps_1=predicted_depth_maps_2,
                         sparse_depth_maps_1=sparse_depths_2,
-                        phase="Training", return_image=True)
-                    utils.stack_and_display(phase="Training", title="Results (c1, d1, sd1, c2, d2, sd2)",
+                        phase="Validation", return_image=True)
+                    utils.stack_and_display(phase="Validation", title="Results (c1, d1, sd1, c2, d2, sd2)",
                                             step=step, writer=writer,
                                             image_list=[colors_1_display, pred_depths_1_display,
                                                         sparse_depths_1_display,

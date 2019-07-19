@@ -91,11 +91,11 @@ if __name__ == '__main__':
     test_transforms = albu.Compose([
         albu.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), max_pixel_value=255.0, p=1.)], p=1.)
 
-    log_root = Path(training_result_root) / "depth_estimation_run_{}_{}_{}_{}_bag_{}".format(currentDT.month,
-                                                                                             currentDT.day,
-                                                                                             currentDT.hour,
-                                                                                             currentDT.minute,
-                                                                                             testing_patient_id)
+    log_root = Path(training_result_root) / "sfmlearner_depth_estimation_run_{}_{}_{}_{}_bag_{}".format(currentDT.month,
+                                                                                                        currentDT.day,
+                                                                                                        currentDT.hour,
+                                                                                                        currentDT.minute,
+                                                                                                        testing_patient_id)
     if not log_root.exists():
         log_root.mkdir(parents=True)
     writer = SummaryWriter(logdir=str(log_root))
@@ -117,17 +117,15 @@ if __name__ == '__main__':
                                       network_downsampling=network_downsampling, inlier_percentage=inlier_percentage,
                                       use_store_data=load_intermediate_data,
                                       store_data_root=training_data_root,
-                                      phase="validation", is_hsv=is_hsv,
-                                      num_pre_workers=num_workers, visible_interval=20, rgb_mode="bgr")
+                                      phase="validation", is_hsv=False,
+                                      num_pre_workers=num_workers, visible_interval=20, rgb_mode="rgb")
 
-    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False,
-                                              num_workers=0)
-    depth_estimation_model = models.FCDenseNet57(n_classes=1)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=True,
+                                              num_workers=num_workers)
+    depth_estimation_model = sfmlearner_models.DispNetS(training=False)
     # Initialize the depth estimation network with Kaiming He initialization
     utils.init_net(depth_estimation_model, type="kaiming", mode="fan_in", activation_mode="relu",
                    distribution="normal")
-    # Multi-GPU running
-    depth_estimation_model = torch.nn.DataParallel(depth_estimation_model)
     # Summary network architecture
     if display_architecture:
         torchsummary.summary(depth_estimation_model, input_size=(3, height, width))
@@ -137,20 +135,17 @@ if __name__ == '__main__':
     if trained_model_path.exists():
         print("Loading {:s} ...".format(str(trained_model_path)))
         state = torch.load(str(trained_model_path))
-        step = state['step']
-        epoch = state['epoch']
-        depth_estimation_model.load_state_dict(state['model'])
-        print('Restored model, epoch {}, step {}'.format(epoch, step))
+        depth_estimation_model.load_state_dict(state['state_dict'])
     else:
         print("Trained model could not be found")
         raise OSError
-    depth_estimation_model = depth_estimation_model.module
 
     # Custom layers
     depth_scaling_layer = models.DepthScalingLayer()
     depth_warping_layer = models.DepthWarpingLayer()
     flow_from_depth_layer = models.FlowfromDepthLayer()
 
+    step = 0
     interval = int(len(test_loader) // 10)
     with torch.no_grad():
         # Set model to evaluation mode
@@ -161,6 +156,8 @@ if __name__ == '__main__':
                     sparse_flows_1, sparse_flows_2, sparse_flow_masks_1, sparse_flow_masks_2, boundaries,
                     rotations_1_wrt_2, rotations_2_wrt_1, translations_1_wrt_2, translations_2_wrt_1, intrinsics,
                     folders) in enumerate(test_loader):
+            # if batch > 10:
+            #     break
             if batch % interval != 0:
                 continue
 
@@ -189,16 +186,19 @@ if __name__ == '__main__':
             sparse_flows_1 = sparse_flows_1 * boundaries
             sparse_flows_2 = sparse_flows_2 * boundaries
 
-            predicted_depth_maps_1 = depth_estimation_model(colors_1)
-            predicted_depth_maps_2 = depth_estimation_model(colors_2)
+            disparities_1 = depth_estimation_model(colors_1)
+            predicted_depth_maps_1 = 1.0 / disparities_1
+            disparities_2 = depth_estimation_model(colors_2)
+            predicted_depth_maps_2 = 1.0 / disparities_2
+
             scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
                 [torch.abs(predicted_depth_maps_1), sparse_depths_1, sparse_depth_masks_1])
             scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
                 [torch.abs(predicted_depth_maps_2), sparse_depths_2, sparse_depth_masks_2])
 
             depth_array = scaled_depth_maps_1[0].squeeze(dim=0).data.cpu().numpy()
-            color_array = np.uint8(255 * cv2.cvtColor(
-                (colors_1[0].permute(1, 2, 0).data.cpu().numpy() + 1.0) * 0.5, cv2.COLOR_HSV2BGR_FULL))
+            color_array = cv2.cvtColor(np.uint8(255 * (colors_1[0].permute(1, 2, 0).data.cpu().numpy() + 1.0) * 0.5),
+                                       cv2.COLOR_RGB2BGR)
             boundary_array = boundaries[0].squeeze(dim=0).data.cpu().numpy()
             intrinsic_array = intrinsics[0].data.cpu().numpy()
 
@@ -227,28 +227,34 @@ if __name__ == '__main__':
                                                                                                  writer=writer,
                                                                                                  colors_1=colors_1,
                                                                                                  sparse_depths_1=sparse_depths_1,
-                                                                                                 pred_depths_1=scaled_depth_maps_1 * boundaries,
+                                                                                                 pred_depths_1=(
+                                                                                                                           1.0 + scaled_depth_maps_1) * boundaries,
                                                                                                  warped_depths_2_to_1=warped_depth_maps_2_to_1,
                                                                                                  sparse_flows_1=sparse_flows_1,
                                                                                                  flows_from_depth_1=flows_from_depth_1,
                                                                                                  phase="Evaluation",
                                                                                                  is_return_image=True,
                                                                                                  color_reverse=True,
-                                                                                                 boundaries=boundaries
+                                                                                                 is_hsv=False,
+                                                                                                 boundaries=boundaries,
+                                                                                                 rgb_mode="rgb"
                                                                                                  )
             colors_2_display, sparse_depths_2_display, pred_depths_2_display, warped_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
                 utils.display_color_sparse_depth_dense_depth_warped_depth_sparse_flow_dense_flow(idx=2, step=step,
                                                                                                  writer=writer,
                                                                                                  colors_1=colors_2,
                                                                                                  sparse_depths_1=sparse_depths_2,
-                                                                                                 pred_depths_1=scaled_depth_maps_2 * boundaries,
+                                                                                                 pred_depths_1=(
+                                                                                                                           1.0 + scaled_depth_maps_2) * boundaries,
                                                                                                  warped_depths_2_to_1=warped_depth_maps_1_to_2,
                                                                                                  sparse_flows_1=sparse_flows_2,
                                                                                                  flows_from_depth_1=flows_from_depth_2,
                                                                                                  phase="Evaluation",
                                                                                                  is_return_image=True,
                                                                                                  color_reverse=True,
-                                                                                                 boundaries=boundaries
+                                                                                                 is_hsv=False,
+                                                                                                 boundaries=boundaries,
+                                                                                                 rgb_mode="rgb"
                                                                                                  )
             image_display = utils.stack_and_display(phase="Evaluation",
                                                     title="Results (c1, sd1, d1, wd1, sf1, df1, c2, sd2, d2, wd2, sf2, df2)",

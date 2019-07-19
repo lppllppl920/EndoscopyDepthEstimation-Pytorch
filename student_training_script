@@ -77,7 +77,7 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Traini
 --display_interval
 50
 --testing_patient_id
-2
+4
 --load_intermediate_data
 --num_iter
 1000
@@ -168,4 +168,8 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Traini
 --trained_model_path
 "/home/xliu89/RemoteData/Sinus Project Data/xingtong/Best_validation_loss_models/student_model_down_4.0_range_10_20_inliner_0.995_hsv_True_bag_3.pt"
 
+
 tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Evaluation/depth_estimation_run_7_7_0_5_bag_4" --samples_per_plugin images=1000
+tensorboard --logdir="/home/xliu89/tmp_ramfs/Training/depth_estimation_run_7_10_2_20_bag_2"
+tensorboard --logdir="/home/xliu89/tmp_ramfs/Training/depth_estimation_run_7_8_0_52_bag_4" --samples_per_plugin images=1000
+tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Training/depth_estimation_run_7_4_15_19_bag_2"

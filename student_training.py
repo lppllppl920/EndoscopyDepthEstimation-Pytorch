@@ -54,7 +54,7 @@ if __name__ == '__main__':
     parser.add_argument('--display_interval', type=int, default=10, help='iteration interval for image display')
     parser.add_argument('--testing_patient_id', type=int, help='id of the testing patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
-    parser.add_argument('--load_trained_student_model', action='store_true',
+    parser.add_argument('--load_trained_model', action='store_true',
                         help='whether to load trained student model')
     parser.add_argument('--number_epoch', type=int, help='number of epochs in total')
     parser.add_argument('--use_hsv_colorspace', action='store_true',
@@ -62,7 +62,7 @@ if __name__ == '__main__':
     parser.add_argument('--training_result_root', type=str, help='root of the training input and ouput')
     parser.add_argument('--training_data_root', type=str, help='path to the training data')
     parser.add_argument('--architecture_summary', action='store_true', help='display the network architecture')
-    parser.add_argument('--trained_student_model_path', type=str, default=None,
+    parser.add_argument('--trained_model_path', type=str, default=None,
                         help='path to the trained student model')
 
     args = parser.parse_args()
@@ -98,12 +98,12 @@ if __name__ == '__main__':
     display_each = args.display_interval
     testing_patient_id = args.testing_patient_id
     load_intermediate_data = args.load_intermediate_data
-    load_trained_student_model = args.load_trained_student_model
+    load_trained_model = args.load_trained_model
     n_epochs = args.number_epoch
     is_hsv = args.use_hsv_colorspace
     training_result_root = args.training_result_root
     display_architecture = args.architecture_summary
-    trained_student_model_path = args.trained_student_model_path
+    trained_model_path = args.trained_model_path
     training_data_root = Path(args.training_data_root)
     id_range = args.id_range
     currentDT = datetime.datetime.now()
@@ -162,7 +162,7 @@ if __name__ == '__main__':
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
                                        phase="train", is_hsv=is_hsv,
-                                       num_pre_workers=num_workers, visible_interval=20)
+                                       num_pre_workers=num_workers, visible_interval=20, rgb_mode="bgr")
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
                                             folder_list=training_folder_list + val_folder_list,
                                             adjacent_range=adjacent_range,
@@ -173,7 +173,7 @@ if __name__ == '__main__':
                                             use_store_data=True,
                                             store_data_root=training_data_root,
                                             phase="validation", is_hsv=is_hsv,
-                                            num_pre_workers=num_workers, visible_interval=20)
+                                            num_pre_workers=num_workers, visible_interval=20, rgb_mode="bgr")
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=num_workers)
@@ -203,10 +203,10 @@ if __name__ == '__main__':
     depth_consistency_loss_function = losses.NormalizedL2Loss()
 
     # Load previous student model, lr scheduler, and so on
-    if load_trained_student_model:
-        if Path(trained_student_model_path).exists():
-            print("Loading {:s} ...".format(trained_student_model_path))
-            state = torch.load(trained_student_model_path)
+    if load_trained_model:
+        if Path(trained_model_path).exists():
+            print("Loading {:s} ...".format(trained_model_path))
+            state = torch.load(trained_model_path)
             step = state['step']
             epoch = state['epoch']
             depth_estimation_model_student.load_state_dict(state['model'])
@@ -231,6 +231,12 @@ if __name__ == '__main__':
         mean_loss = 0.0
         mean_depth_consistency_loss = 0.0
         mean_sparse_flow_loss = 0.0
+
+        # # TODO: Fixed for network training
+        # if epoch <= 20:
+        #     depth_consistency_weight = 0.1
+        # else:
+        #     depth_consistency_weight = 10.0
 
         for batch, (
                 colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1, sparse_depth_masks_2,
@@ -270,9 +276,9 @@ if __name__ == '__main__':
             predicted_depth_maps_2 = depth_estimation_model_student(colors_2)
 
             scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
-                [torch.abs(predicted_depth_maps_1), sparse_depths_1, sparse_depth_masks_1])
+                [predicted_depth_maps_1, sparse_depths_1, sparse_depth_masks_1])
             scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
-                [torch.abs(predicted_depth_maps_2), sparse_depths_2, sparse_depth_masks_2])
+                [predicted_depth_maps_2, sparse_depths_2, sparse_depth_masks_2])
 
             # Sparse flow loss
             # Flow maps calculated using predicted dense depth maps and camera poses

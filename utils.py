@@ -58,12 +58,15 @@ def get_color_file_names(root, split_ratio=(0.9, 0.05, 0.05)):
     return image_list[:split_point[0]], image_list[split_point[0]:split_point[1]], image_list[split_point[1]:]
 
 
-def get_test_color_img(img_file_name, start_h, end_h, start_w, end_w, downsampling_factor, is_hsv):
+def get_test_color_img(img_file_name, start_h, end_h, start_w, end_w, downsampling_factor, is_hsv, rgb_mode):
     img = cv2.imread(img_file_name)
     downsampled_img = cv2.resize(img, (0, 0), fx=1. / downsampling_factor, fy=1. / downsampling_factor)
     downsampled_img = downsampled_img[start_h:end_h, start_w:end_w, :]
     if is_hsv:
         downsampled_img = cv2.cvtColor(downsampled_img, cv2.COLOR_BGR2HSV_FULL)
+    else:
+        if rgb_mode == "rgb":
+            downsampled_img = cv2.cvtColor(downsampled_img, cv2.COLOR_BGR2RGB)
     downsampled_img = np.array(downsampled_img, dtype="float32")
     return downsampled_img
 
@@ -427,7 +430,8 @@ def generating_pos_and_increment(idx, visible_view_indexes, adjacent_range):
     return [visible_view_idx, increment]
 
 
-def get_pair_color_imgs(prefix_seq, pair_indexes, start_h, end_h, start_w, end_w, downsampling_factor, is_hsv):
+def get_pair_color_imgs(prefix_seq, pair_indexes, start_h, end_h, start_w, end_w, downsampling_factor, is_hsv,
+                        rgb_mode):
     imgs = []
     for i in pair_indexes:
         img = cv2.imread(str(Path(prefix_seq) / "{:08d}.jpg".format(i)))
@@ -435,6 +439,9 @@ def get_pair_color_imgs(prefix_seq, pair_indexes, start_h, end_h, start_w, end_w
         downsampled_img = downsampled_img[start_h:end_h, start_w:end_w, :]
         if is_hsv:
             downsampled_img = cv2.cvtColor(downsampled_img, cv2.COLOR_BGR2HSV_FULL)
+        else:
+            if rgb_mode == "rgb":
+                downsampled_img = cv2.cvtColor(downsampled_img, cv2.COLOR_BGR2RGB)
         imgs.append(downsampled_img)
     height, width, channel = imgs[0].shape
     imgs = np.asarray(imgs, dtype=np.float32)
@@ -703,7 +710,7 @@ def visualize_color_image(title, images, rebias=False, is_hsv=False, idx=None):
             cv2.imshow(title + "_" + str(id), image)
 
 
-def visualize_depth_map(title, depth_maps, min_value_=None, max_value_=None, idx=None, color_mode=cv2.COLORMAP_HOT):
+def visualize_depth_map(title, depth_maps, min_value_=None, max_value_=None, idx=None, color_mode=cv2.COLORMAP_JET):
     min_value_list = []
     max_value_list = []
     if idx is None:
@@ -882,13 +889,19 @@ def display_color_sparse_depth_dense_depth_warped_depth_sparse_flow_dense_flow(i
                                                                                sparse_depths_1, pred_depths_1,
                                                                                warped_depths_2_to_1,
                                                                                sparse_flows_1, flows_from_depth_1,
+                                                                               boundaries,
                                                                                phase="Training", is_return_image=False,
                                                                                color_reverse=True,
+                                                                               is_hsv=True, rgb_mode="bgr",
                                                                                ):
-    colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
+    colors_display = vutils.make_grid((colors_1 * 0.5 + 0.5) * boundaries, normalize=False)
     colors_display = np.moveaxis(colors_display.data.cpu().numpy(),
                                  source=[0, 1, 2], destination=[2, 0, 1])
-    colors_display = cv2.cvtColor(colors_display, cv2.COLOR_HSV2RGB_FULL)
+    if is_hsv:
+        colors_display = cv2.cvtColor(colors_display, cv2.COLOR_HSV2RGB_FULL)
+    else:
+        if rgb_mode == "bgr":
+            colors_display = cv2.cvtColor(colors_display, cv2.COLOR_BGR2RGB)
 
     min_depth = torch.min(pred_depths_1)
     max_depth = torch.max(pred_depths_1)
@@ -947,9 +960,8 @@ def display_color_depth_sparse_flow_dense_flow(idx, step, writer, colors_1, pred
     pred_depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(pred_depths_display.data.cpu().numpy(),
                                                                        source=[0, 1, 2],
                                                                        destination=[2, 0, 1])), cv2.COLORMAP_JET)
-    sparse_flows_display = draw_flow(sparse_flows_1)
-    dense_flows_display = draw_flow(flows_from_depth_1)
-
+    sparse_flows_display, max_v = draw_flow(sparse_flows_1)
+    dense_flows_display, _ = draw_flow(flows_from_depth_1, max_v=max_v)
     if color_reverse:
         pred_depths_display = cv2.cvtColor(pred_depths_display, cv2.COLOR_BGR2RGB)
         sparse_flows_display = cv2.cvtColor(sparse_flows_display, cv2.COLOR_BGR2RGB)
@@ -978,12 +990,12 @@ def display_color_pred_depth_sparse_depth(idx, step, writer, colors_1, pred_dept
     depths_display = vutils.make_grid(pred_depth_maps_1, normalize=True, scale_each=True)
     depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(depths_display.data.cpu().numpy(),
                                                                   source=[0, 1, 2], destination=[2, 0, 1])),
-                                       cv2.COLORMAP_HOT)
+                                       cv2.COLORMAP_JET)
 
     sparse_depths_display = vutils.make_grid(sparse_depth_maps_1, normalize=True, scale_each=True)
     sparse_depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(sparse_depths_display.data.cpu().numpy(),
                                                                          source=[0, 1, 2], destination=[2, 0, 1])),
-                                              cv2.COLORMAP_HOT)
+                                              cv2.COLORMAP_JET)
 
     depths_display = cv2.cvtColor(depths_display, cv2.COLOR_BGR2RGB)
     sparse_depths_display = cv2.cvtColor(sparse_depths_display, cv2.COLOR_BGR2RGB)
@@ -1004,7 +1016,7 @@ def display_depth_goal(idx, step, writer, goal_depth_map_1):
     depths_display = vutils.make_grid(goal_depth_map_1, normalize=True, scale_each=True)
     depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(depths_display.data.cpu().numpy(),
                                                                   source=[0, 1, 2], destination=[2, 0, 1])),
-                                       cv2.COLORMAP_HOT)
+                                       cv2.COLORMAP_JET)
     depths_display = cv2.cvtColor(depths_display, cv2.COLOR_BGR2RGB)
     writer.add_image('Training/Images/Goal_Depth_' + str(idx),
                      np.moveaxis(depths_display, source=[0, 1, 2], destination=[1, 2, 0]), step)
@@ -1091,7 +1103,7 @@ def generate_validation_output(idx, step, writer, colors_1, scaled_depth_maps_1,
     depths_display = vutils.make_grid(scaled_depth_maps_1, normalize=True, scale_each=True)
     depths_display_hsv = cv2.applyColorMap(np.uint8(255 * np.moveaxis(depths_display.data.cpu().numpy(),
                                                                       source=[0, 1, 2], destination=[2, 0, 1])),
-                                           cv2.COLORMAP_HOT)
+                                           cv2.COLORMAP_JET)
     depths_display_hsv = cv2.cvtColor(depths_display_hsv, cv2.COLOR_BGR2RGB)
     writer.add_image('Validation/Images/Depth_' + str(idx),
                      np.moveaxis(depths_display_hsv, source=[0, 1, 2], destination=[1, 2, 0]), step)
@@ -1148,7 +1160,7 @@ def generate_validation_output(idx, step, writer, colors_1, scaled_depth_maps_1,
 
 
 def generate_test_output(idx, step, writer, colors_1, scaled_depth_maps_1, boundaries, intrinsic_matrices, is_hsv,
-                         results_root, which_bag, color_mode=cv2.COLORMAP_HOT):
+                         results_root, which_bag, color_mode=cv2.COLORMAP_JET):
     colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
     colors_display_hsv = np.moveaxis(colors_display.data.cpu().numpy(),
                                      source=[0, 1, 2], destination=[2, 0, 1])
@@ -1288,7 +1300,7 @@ def read_pose_messages_from_tracker(file_path):
 def write_test_output_with_initial_pose(results_root, colors_1, scaled_depth_maps_1, boundaries, intrinsic_matrices,
                                         is_hsv,
                                         image_indexes,
-                                        translation_dict, rotation_dict, color_mode=cv2.COLORMAP_HOT):
+                                        translation_dict, rotation_dict, color_mode=cv2.COLORMAP_JET):
     color_inputs_cpu = colors_1.data.cpu().numpy()
     pred_depths_cpu = (boundaries * scaled_depth_maps_1).data.cpu().numpy()
     boundaries_cpu = boundaries.data.cpu().numpy()
@@ -1867,3 +1879,35 @@ def read_camera_to_tcp_transform(root):
         for j in range(4):
             transform[i, j] = temp[4 * i + j]
     return transform[:, :3], transform[:, 3].reshape((3, 1))
+
+
+if __name__ == "__main__":
+    size = 1001
+    circle = np.zeros((size, size, 3), dtype=np.float32)
+    circle[:, :, 1] = 255
+
+    center = (size - 1) / 2
+    for y in range(size):
+        for x in range(size):
+            fy = (y - center) / size
+            fx = (x - center) / size
+            ang = np.arctan2(fy, fx) + np.pi
+            v = np.sqrt(fx * fx + fy * fy)
+            circle[y, x, 0] = ang * (180 / np.pi / 2)
+            circle[y, x, 2] = np.uint8(np.minimum(v, 0.5) * 2.0 * 255)
+
+    circle = cv2.cvtColor(np.uint8(circle), cv2.COLOR_HSV2RGB)
+    cv2.imshow("", circle)
+    cv2.imwrite("/home/xliu89/tmp_ramfs/flow_color_coding.png", circle)
+    cv2.waitKey()
+
+    # fx, fy = flows_display[:, :, 0], flows_display[:, :, 1] * h / w
+    # ang = np.arctan2(fy, fx) + np.pi
+    # v = np.sqrt(fx * fx + fy * fy)
+    # hsv = np.zeros((h, w, 3), np.uint8)
+    # hsv[..., 0] = ang * (180 / np.pi / 2)
+    # hsv[..., 1] = 255
+    # if max_v is None:
+    #     hsv[..., 2] = np.uint8(np.minimum(v / np.max(v), 1.0) * 255)
+    # else:
+    #     hsv[..., 2] = np.uint8(np.minimum(v / max_v, 1.0) * 255)

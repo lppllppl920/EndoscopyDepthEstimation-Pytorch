@@ -117,7 +117,8 @@ def pre_processing_data(process_id, folder_list, downsampling, network_downsampl
 class SfMDataset(Dataset):
     def __init__(self, image_file_names, folder_list, adjacent_range,
                  transform, downsampling, network_downsampling, inlier_percentage, visible_interval,
-                 use_store_data, store_data_root, phase, is_hsv, num_pre_workers):
+                 use_store_data, store_data_root, phase, is_hsv, num_pre_workers, rgb_mode):
+        self.rgb_mode = rgb_mode
         self.image_file_names = image_file_names
         self.folder_list = folder_list
         self.transform = transform
@@ -144,8 +145,13 @@ class SfMDataset(Dataset):
         self.crop_positions_per_seq = {}
         self.estimated_scale_per_seq = {}
         self.normalize = albu.Normalize(std=(0.5, 0.5, 0.5), mean=(0.5, 0.5, 0.5), max_pixel_value=255.0)
-        precompute_path = store_data_root / ("evaluate_precompute_" + str(
-            self.downsampling) + "_" + str(self.network_downsampling) + "_" + str(self.inlier_percentage) + ".pkl")
+
+        if phase == "Evaluation":
+            precompute_path = store_data_root / ("evaluate_precompute_" + str(
+                self.downsampling) + "_" + str(self.network_downsampling) + "_" + str(self.inlier_percentage) + ".pkl")
+        else:
+            precompute_path = store_data_root / ("precompute_" + str(
+                self.downsampling) + "_" + str(self.network_downsampling) + "_" + str(self.inlier_percentage) + ".pkl")
         # Save all intermediate results to hard disk for quick access later on
         if not use_store_data or not precompute_path.exists():
             queue_size = Queue()
@@ -363,7 +369,7 @@ class SfMDataset(Dataset):
             pair_imgs = utils.get_pair_color_imgs(prefix_seq=folder, pair_indexes=pair_indexes, start_h=start_h,
                                                   start_w=start_w,
                                                   end_h=end_h, end_w=end_w, downsampling_factor=self.downsampling,
-                                                  is_hsv=self.is_hsv)
+                                                  is_hsv=self.is_hsv, rgb_mode=self.rgb_mode)
 
             # Calculate relative motion between two frames
             relative_motion = np.matmul(pair_extrinsic_matrices[0], np.linalg.inv(pair_extrinsic_matrices[1]))
@@ -417,16 +423,16 @@ class SfMDataset(Dataset):
             if self.phase == 'train':
                 if self.transform is not None:
                     if self.is_hsv:
-                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1), cv2.COLOR_HSV2BGR_FULL)
-                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2), cv2.COLOR_HSV2BGR_FULL)
+                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1), cv2.COLOR_HSV2RGB_FULL)
+                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2), cv2.COLOR_HSV2RGB_FULL)
                     # Data augmentation
                     color_img_1 = self.transform(image=color_img_1)['image']
                     color_img_2 = self.transform(image=color_img_2)['image']
                     if self.is_hsv:
                         color_img_1 = cv2.cvtColor(np.uint8(color_img_1),
-                                                   cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
+                                                   cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
                         color_img_2 = cv2.cvtColor(np.uint8(color_img_2),
-                                                   cv2.COLOR_BGR2HSV_FULL).astype(np.float32)
+                                                   cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
                 # Normalize
                 color_img_1 = self.normalize(image=color_img_1)['image']
                 color_img_2 = self.normalize(image=color_img_2)['image']
@@ -453,8 +459,6 @@ class SfMDataset(Dataset):
             start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
             color_img_1 = utils.get_test_color_img(img_file_name, start_h, end_h, start_w, end_w,
                                                    self.downsampling, self.is_hsv)
-            if self.transform is not None:
-                color_img_1 = self.transform(image=color_img_1)['image']
             # Normalize
             color_img_1 = self.normalize(image=color_img_1)['image']
 
