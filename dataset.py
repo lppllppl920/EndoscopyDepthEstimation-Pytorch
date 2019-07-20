@@ -458,7 +458,7 @@ class SfMDataset(Dataset):
             folder = str(img_file_name.parent)
             start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
             color_img_1 = utils.get_test_color_img(img_file_name, start_h, end_h, start_w, end_w,
-                                                   self.downsampling, self.is_hsv)
+                                                   self.downsampling, self.is_hsv, rgb_mode=self.rgb_mode)
             # Normalize
             color_img_1 = self.normalize(image=color_img_1)['image']
 
