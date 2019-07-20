@@ -102,7 +102,7 @@ if __name__ == '__main__':
     print("Tensorboard visualization at {}".format(str(log_root)))
 
     # Read all frame indexes
-    selected_index_array = utils.read_visible_view_indexes(sequence_root)
+    # selected_index_array = utils.read_visible_view_indexes(sequence_root)
     # Get color image filenames
     test_filenames = utils.get_filenames_from_frame_indexes(sequence_root, selected_index_array)
 

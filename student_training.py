@@ -233,10 +233,10 @@ if __name__ == '__main__':
         mean_sparse_flow_loss = 0.0
 
         # # TODO: Fixed for network training
-        # if epoch <= 20:
-        #     depth_consistency_weight = 0.1
-        # else:
-        #     depth_consistency_weight = 10.0
+        if epoch <= 20:
+            depth_consistency_weight = 0.1
+        else:
+            depth_consistency_weight = 5.0
 
         for batch, (
                 colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1, sparse_depth_masks_2,

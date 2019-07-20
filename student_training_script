@@ -173,3 +173,7 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Evalua
 tensorboard --logdir="/home/xliu89/tmp_ramfs/Training/depth_estimation_run_7_10_2_20_bag_2"
 tensorboard --logdir="/home/xliu89/tmp_ramfs/Training/depth_estimation_run_7_8_0_52_bag_4" --samples_per_plugin images=1000
 tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Training/depth_estimation_run_7_4_15_19_bag_2"
+
+
+## Evalution folder for comparison of sparse flow, sparse depth, and full loss
+"/home/xliu89/RemoteData/Sinus Project Data/xingtong/FullLengthEndoscopicVIdeoData/bag_5/_start_001862_end_002233_stride_1000_segment_00"
