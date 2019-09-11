@@ -13,8 +13,6 @@ import torch
 import numpy as np
 import cv2
 import pickle
-# import random
-# import Queue
 from multiprocessing import Process, Queue
 
 from torch.utils.data import Dataset
@@ -24,7 +22,7 @@ import albumentations as albu
 import utils
 
 
-def find_largest_size(folder_list, downsampling, net_depth, queue_size):
+def find_largest_size(folder_list, downsampling, network_downsampling, queue_size):
     for folder in folder_list:
         folder = str(folder) + "/"
         # Read undistorted mask image
@@ -32,37 +30,35 @@ def find_largest_size(folder_list, downsampling, net_depth, queue_size):
         # Downsample and crop the undistorted mask image
         _, start_h, end_h, start_w, end_w = \
             utils.downsample_and_crop_mask(undistorted_mask_boundary, downsampling_factor=downsampling,
-                                           divide=2 ** (net_depth - 1))
+                                           divide=network_downsampling)
         queue_size.put([end_h - start_h, end_w - start_w])
 
 
-def pre_processing_data(process_id, folder_list, downsampling, net_depth, is_hsv, inlier_percentage, suggested_h,
-                        suggested_w,
-                        queue_contamination_point_list, queue_appearing_count,
-                        queue_intrinsic_matrix, queue_point_cloud,
+def pre_processing_data(process_id, folder_list, downsampling, network_downsampling, is_hsv, inlier_percentage,
+                        visible_interval,
+                        suggested_h, suggested_w,
+                        queue_clean_point_list, queue_intrinsic_matrix, queue_point_cloud,
                         queue_mask_boundary, queue_view_indexes_per_point, queue_selected_indexes,
                         queue_visible_view_indexes,
                         queue_extrinsics, queue_projection, queue_crop_positions, queue_estimated_scale):
     for folder in folder_list:
-        # Retrieve folder path
-        folder = str(folder) + "/"
-        # Pre-build all data
         # We use folder path as the key for dictionaries
         # Read undistorted mask image
-        undistorted_mask_boundary = cv2.imread(folder + "undistorted_mask.bmp", cv2.IMREAD_GRAYSCALE)
+        folder_str = str(folder)
+        undistorted_mask_boundary = cv2.imread(str(folder / "undistorted_mask.bmp"), cv2.IMREAD_GRAYSCALE)
         # Downsample and crop the undistorted mask image
         cropped_downsampled_undistorted_mask_boundary, start_h, end_h, start_w, end_w = \
             utils.downsample_and_crop_mask(undistorted_mask_boundary, downsampling_factor=downsampling,
-                                           divide=2 ** (net_depth - 1), suggested_h=suggested_h,
+                                           divide=network_downsampling, suggested_h=suggested_h,
                                            suggested_w=suggested_w)
-        queue_mask_boundary.put([folder, cropped_downsampled_undistorted_mask_boundary])
-        queue_crop_positions.put([folder, [start_h, end_h, start_w, end_w]])
+        queue_mask_boundary.put([folder_str, cropped_downsampled_undistorted_mask_boundary])
+        queue_crop_positions.put([folder_str, [start_h, end_h, start_w, end_w]])
         # Read selected image indexes and stride
         stride, selected_indexes = utils.read_selected_indexes(folder)
-        queue_selected_indexes.put([folder, selected_indexes])
+        queue_selected_indexes.put([folder_str, selected_indexes])
         # Read visible view indexes
         visible_view_indexes = utils.read_visible_view_indexes(folder)
-        queue_visible_view_indexes.put([folder, visible_view_indexes])
+        queue_visible_view_indexes.put([folder_str, visible_view_indexes])
         # Read undistorted camera intrinsics
         undistorted_camera_intrinsic_per_view = utils.read_camera_intrinsic_per_view(folder)
         # Downsample and crop the undistorted camera intrinsics
@@ -70,78 +66,77 @@ def pre_processing_data(process_id, folder_list, downsampling, net_depth, is_hsv
         cropped_downsampled_undistorted_intrinsic_matrix = utils.modify_camera_intrinsic_matrix(
             undistorted_camera_intrinsic_per_view[0], start_h=start_h,
             start_w=start_w, downsampling_factor=downsampling)
-        queue_intrinsic_matrix.put([folder, cropped_downsampled_undistorted_intrinsic_matrix])
+        queue_intrinsic_matrix.put([folder_str, cropped_downsampled_undistorted_intrinsic_matrix])
         # Read sparse point cloud from SfM
-        point_cloud = utils.read_point_cloud(folder)
-        queue_point_cloud.put([folder, point_cloud])
+        if inlier_percentage == 1:
+            point_cloud = utils.read_point_cloud(str(folder / "structure.ply"))
+        else:
+            point_cloud = utils.read_point_cloud(str(folder / "structure_filtered.ply"))
+        queue_point_cloud.put([folder_str, point_cloud])
         # self.point_cloud_per_seq[folder] = point_cloud
         # Read visible view indexes per point
         view_indexes_per_point = utils.read_view_indexes_per_point(folder, visible_view_indexes=
         visible_view_indexes, point_cloud_count=len(point_cloud))
-        queue_view_indexes_per_point.put([folder, view_indexes_per_point])
+        # Update view_indexes_per_point_per_seq with neighborhood frames to increase stability and
+        # avoid as much occlusion problem as possible
+        view_indexes_per_point = utils.overlapping_visible_view_indexes_per_point(view_indexes_per_point,
+                                                                                  visible_interval)
+        queue_view_indexes_per_point.put([folder_str, view_indexes_per_point])
         # Read pose data for all visible views
         poses = utils.read_pose_data(folder)
-        # Get data balance scale to reduce training data imbalance
-        estimated_scale = utils.get_data_balancing_scale(poses, len(visible_view_indexes))
-        queue_estimated_scale.put([folder, estimated_scale])
         # Calculate extrinsic and projection matrices
         visible_extrinsic_matrices, visible_cropped_downsampled_undistorted_projection_matrices = \
             utils.get_extrinsic_matrix_and_projection_matrix(poses,
                                                              intrinsic_matrix=
                                                              cropped_downsampled_undistorted_intrinsic_matrix,
                                                              visible_view_count=len(visible_view_indexes))
-        queue_extrinsics.put([folder, visible_extrinsic_matrices])
-        queue_projection.put([folder, visible_cropped_downsampled_undistorted_projection_matrices])
-
-        visible_cropped_downsampled_imgs = utils.get_color_imgs(folder, visible_view_indexes=
-        visible_view_indexes,
+        queue_extrinsics.put([folder_str, visible_extrinsic_matrices])
+        queue_projection.put([folder_str, visible_cropped_downsampled_undistorted_projection_matrices])
+        # Get approximate data global scale to reduce training data imbalance
+        global_scale = utils.global_scale_estimation(visible_extrinsic_matrices, point_cloud)
+        queue_estimated_scale.put([folder_str, global_scale])
+        visible_cropped_downsampled_imgs = utils.get_color_imgs(folder, visible_view_indexes=visible_view_indexes,
                                                                 start_h=start_h, start_w=start_w,
                                                                 end_h=end_h, end_w=end_w,
                                                                 downsampling_factor=downsampling,
                                                                 is_hsv=is_hsv)
         # Calculate contaminated point list
-        contaminated_point_list = utils.get_contaminated_point_list(imgs=visible_cropped_downsampled_imgs,
-                                                                    point_cloud=point_cloud,
-                                                                    mask_boundary=
-                                                                    cropped_downsampled_undistorted_mask_boundary,
-                                                                    inlier_percentage=inlier_percentage,
-                                                                    projection_matrices=
-                                                                    visible_cropped_downsampled_undistorted_projection_matrices,
-                                                                    extrinsic_matrices=visible_extrinsic_matrices,
-                                                                    is_hsv=is_hsv)
-        queue_contamination_point_list.put([folder, contaminated_point_list])
-        # Calculate appearing count of view per 3D point
-        appearing_count_per_point = utils.get_visible_count_per_point(
-            view_indexes_per_point=view_indexes_per_point)
-        queue_appearing_count.put([folder, appearing_count_per_point])
-        print(folder)
+        clean_point_indicator_array = utils.get_clean_point_list(imgs=visible_cropped_downsampled_imgs,
+                                                                 point_cloud=point_cloud,
+                                                                 mask_boundary=
+                                                                 cropped_downsampled_undistorted_mask_boundary,
+                                                                 inlier_percentage=inlier_percentage,
+                                                                 projection_matrices=
+                                                                 visible_cropped_downsampled_undistorted_projection_matrices,
+                                                                 extrinsic_matrices=visible_extrinsic_matrices,
+                                                                 is_hsv=is_hsv,
+                                                                 view_indexes_per_point=view_indexes_per_point)
+        queue_clean_point_list.put([folder_str, clean_point_indicator_array])
+        print("sequence {} finished".format(folder_str))
 
-    print("{:d} job finished".format(process_id))
+    print("{}th process finished".format(process_id))
 
 
 class SfMDataset(Dataset):
-    def __init__(self, image_file_names, folder_list, adjacent_range=(1, 10), to_augment=True,
-                 transform=None,
-                 downsampling=1.0, net_depth=6, inlier_percentage=0.99, use_store_data=False, store_data_root=None,
-                 use_view_indexes_per_point=True, visualize=False, phase="train",
-                 is_hsv=True):
+    def __init__(self, image_file_names, folder_list, adjacent_range,
+                 transform, downsampling, network_downsampling, inlier_percentage, visible_interval,
+                 use_store_data, store_data_root, phase, is_hsv, num_pre_workers, rgb_mode):
+        self.rgb_mode = rgb_mode
         self.image_file_names = image_file_names
         self.folder_list = folder_list
-        self.to_augment = to_augment
         self.transform = transform
         assert (len(adjacent_range) == 2)
         self.adjacent_range = adjacent_range
         self.transform = transform
-        self.to_augment = to_augment
-        self.use_view_indexes_per_point = use_view_indexes_per_point
-        self.visualize = visualize
         self.is_hsv = is_hsv
         self.inlier_percentage = inlier_percentage
         self.downsampling = downsampling
-        self.net_depth = net_depth
+        self.network_downsampling = network_downsampling
         self.phase = phase
-        self.contamination_point_list_per_seq = {}
-        self.appearing_count_per_seq = {}
+        self.visible_interval = visible_interval
+        self.num_pre_workers = num_pre_workers
+
+        self.clean_point_list_per_seq = {}
         self.intrinsic_matrix_per_seq = {}
         self.point_cloud_per_seq = {}
         self.mask_boundary_per_seq = {}
@@ -152,15 +147,18 @@ class SfMDataset(Dataset):
         self.projection_per_seq = {}
         self.crop_positions_per_seq = {}
         self.estimated_scale_per_seq = {}
+        self.normalize = albu.Normalize(std=(0.5, 0.5, 0.5), mean=(0.5, 0.5, 0.5), max_pixel_value=255.0)
 
-        precompute_path = store_data_root / ("precompute_" + str(
-            self.downsampling) + "_" + str(
-            self.net_depth) + "_" + str(self.inlier_percentage) + ".pkl")
+        if phase == "Evaluation":
+            precompute_path = store_data_root / ("evaluate_precompute_" + str(
+                self.downsampling) + "_" + str(self.network_downsampling) + "_" + str(self.inlier_percentage) + ".pkl")
+        else:
+            precompute_path = store_data_root / ("precompute_" + str(
+                self.downsampling) + "_" + str(self.network_downsampling) + "_" + str(self.inlier_percentage) + ".pkl")
         # Save all intermediate results to hard disk for quick access later on
         if not use_store_data or not precompute_path.exists():
             queue_size = Queue()
-            queue_contamination_point_list = Queue()
-            queue_appearing_count = Queue()
+            queue_clean_point_list = Queue()
             queue_intrinsic_matrix = Queue()
             queue_point_cloud = Queue()
             queue_mask_boundary = Queue()
@@ -174,16 +172,16 @@ class SfMDataset(Dataset):
 
             process_pool = []
 
-            workers = 12
+            workers = self.num_pre_workers
             interval = len(self.folder_list) // workers
 
             # Go through the entire image list to find the largest required h and w
             for i in range(workers - 1):
                 process_pool.append(Process(target=find_largest_size, args=(
-                    self.folder_list[i * interval: (i + 1) * interval], self.downsampling, self.net_depth,
+                    self.folder_list[i * interval: (i + 1) * interval], self.downsampling, self.network_downsampling,
                     queue_size)))
             process_pool.append(Process(target=find_largest_size, args=(
-                self.folder_list[(workers - 1) * interval:], self.downsampling, self.net_depth, queue_size)))
+                self.folder_list[(workers - 1) * interval:], self.downsampling, self.network_downsampling, queue_size)))
             for t in process_pool:
                 t.start()
 
@@ -200,16 +198,16 @@ class SfMDataset(Dataset):
                             largest_w = w
                     t.join(timeout=1)
 
-            print ("Largest image size is: ", largest_h, largest_w)
-            print ("Start pre-processing ...")
+            print("Largest image size is: ", largest_h, largest_w)
+            print("Start pre-processing dataset...")
 
             process_pool = []
             for i in range(workers - 1):
                 process_pool.append(Process(target=pre_processing_data,
                                             args=(i, self.folder_list[i * interval: (i + 1) * interval],
-                                                  self.downsampling, self.net_depth, self.is_hsv,
-                                                  self.inlier_percentage, largest_h, largest_w,
-                                                  queue_contamination_point_list, queue_appearing_count,
+                                                  self.downsampling, self.network_downsampling, self.is_hsv,
+                                                  self.inlier_percentage, self.visible_interval, largest_h, largest_w,
+                                                  queue_clean_point_list,
                                                   queue_intrinsic_matrix, queue_point_cloud,
                                                   queue_mask_boundary, queue_view_indexes_per_point,
                                                   queue_selected_indexes,
@@ -219,9 +217,9 @@ class SfMDataset(Dataset):
                                                   queue_estimated_scale)))
             process_pool.append(Process(target=pre_processing_data,
                                         args=(workers - 1, self.folder_list[(workers - 1) * interval:],
-                                              self.downsampling, self.net_depth, self.is_hsv,
-                                              self.inlier_percentage, largest_h, largest_w,
-                                              queue_contamination_point_list, queue_appearing_count,
+                                              self.downsampling, self.network_downsampling, self.is_hsv,
+                                              self.inlier_percentage, self.visible_interval, largest_h, largest_w,
+                                              queue_clean_point_list,
                                               queue_intrinsic_matrix, queue_point_cloud,
                                               queue_mask_boundary, queue_view_indexes_per_point,
                                               queue_selected_indexes,
@@ -235,7 +233,7 @@ class SfMDataset(Dataset):
 
             count = 0
             for t in process_pool:
-                print("Waiting for {:d} to complete".format(count))
+                print("Waiting for {:d}th process to complete".format(count))
                 count += 1
                 while t.is_alive():
                     while not queue_selected_indexes.empty():
@@ -247,12 +245,9 @@ class SfMDataset(Dataset):
                     while not queue_view_indexes_per_point.empty():
                         folder, view_indexes_per_point = queue_view_indexes_per_point.get()
                         self.view_indexes_per_point_per_seq[folder] = view_indexes_per_point
-                    while not queue_contamination_point_list.empty():
-                        folder, contamination_point_list = queue_contamination_point_list.get()
-                        self.contamination_point_list_per_seq[folder] = contamination_point_list
-                    while not queue_appearing_count.empty():
-                        folder, appearing_count = queue_appearing_count.get()
-                        self.appearing_count_per_seq[folder] = appearing_count
+                    while not queue_clean_point_list.empty():
+                        folder, clean_point_list = queue_clean_point_list.get()
+                        self.clean_point_list_per_seq[folder] = clean_point_list
                     while not queue_intrinsic_matrix.empty():
                         folder, intrinsic_matrix = queue_intrinsic_matrix.get()
                         self.intrinsic_matrix_per_seq[folder] = intrinsic_matrix
@@ -285,12 +280,9 @@ class SfMDataset(Dataset):
             while not queue_view_indexes_per_point.empty():
                 folder, view_indexes_per_point = queue_view_indexes_per_point.get()
                 self.view_indexes_per_point_per_seq[folder] = view_indexes_per_point
-            while not queue_contamination_point_list.empty():
-                folder, contamination_point_list = queue_contamination_point_list.get()
-                self.contamination_point_list_per_seq[folder] = contamination_point_list
-            while not queue_appearing_count.empty():
-                folder, appearing_count = queue_appearing_count.get()
-                self.appearing_count_per_seq[folder] = appearing_count
+            while not queue_clean_point_list.empty():
+                folder, clean_point_list = queue_clean_point_list.get()
+                self.clean_point_list_per_seq[folder] = clean_point_list
             while not queue_intrinsic_matrix.empty():
                 folder, intrinsic_matrix = queue_intrinsic_matrix.get()
                 self.intrinsic_matrix_per_seq[folder] = intrinsic_matrix
@@ -310,8 +302,8 @@ class SfMDataset(Dataset):
                 folder, mask_boundary = queue_mask_boundary.get()
                 self.mask_boundary_per_seq[folder] = mask_boundary
             while not queue_estimated_scale.empty():
-                folder, estiamted_scale = queue_estimated_scale.get()
-                self.estimated_scale_per_seq[folder] = estiamted_scale
+                folder, estimated_scale = queue_estimated_scale.get()
+                self.estimated_scale_per_seq[folder] = estimated_scale
             print("Pre-processing complete.")
 
             # Store all intermediate information to a single data file
@@ -321,8 +313,8 @@ class SfMDataset(Dataset):
                      self.visible_view_indexes_per_seq,
                      self.point_cloud_per_seq, self.intrinsic_matrix_per_seq,
                      self.mask_boundary_per_seq, self.view_indexes_per_point_per_seq, self.extrinsics_per_seq,
-                     self.projection_per_seq, self.contamination_point_list_per_seq,
-                     self.appearing_count_per_seq, self.downsampling, self.net_depth, self.inlier_percentage,
+                     self.projection_per_seq, self.clean_point_list_per_seq,
+                     self.downsampling, self.network_downsampling, self.inlier_percentage,
                      self.estimated_scale_per_seq],
                     f, pickle.HIGHEST_PROTOCOL)
         else:
@@ -331,8 +323,8 @@ class SfMDataset(Dataset):
                  self.visible_view_indexes_per_seq,
                  self.point_cloud_per_seq, self.intrinsic_matrix_per_seq,
                  self.mask_boundary_per_seq, self.view_indexes_per_point_per_seq, self.extrinsics_per_seq,
-                 self.projection_per_seq, self.contamination_point_list_per_seq,
-                 self.appearing_count_per_seq, self.downsampling, self.net_depth,
+                 self.projection_per_seq, self.clean_point_list_per_seq,
+                 self.downsampling, self.network_downsampling,
                  self.inlier_percentage, self.estimated_scale_per_seq] = pickle.load(f)
 
     def __len__(self):
@@ -341,16 +333,20 @@ class SfMDataset(Dataset):
     def __getitem__(self, idx):
         if self.phase == 'train' or self.phase == 'validation':
             while True:
-                img_file_name = str(self.image_file_names[idx])
+                img_file_name = self.image_file_names[idx]
                 # Retrieve the folder path
-                folder = img_file_name[:-12]
+                folder = str(img_file_name.parent)
                 # Randomly pick one adjacent frame
                 # We assume the filename has 8 logits followed by ".jpg"
                 start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
                 pos, increment = utils.generating_pos_and_increment(idx=idx,
-                                                                    visible_view_indexes=self.visible_view_indexes_per_seq[
+                                                                    visible_view_indexes=
+                                                                    self.visible_view_indexes_per_seq[
                                                                         folder],
                                                                     adjacent_range=self.adjacent_range)
+                img_file_name = self.visible_view_indexes_per_seq[folder][
+                    idx % len(self.visible_view_indexes_per_seq[folder])]
+
                 # Get pair visible view indexes and pair extrinsic and projection matrices
                 pair_indexes = [self.visible_view_indexes_per_seq[folder][pos],
                                 self.visible_view_indexes_per_seq[folder][pos + increment]]
@@ -358,416 +354,130 @@ class SfMDataset(Dataset):
                                            self.extrinsics_per_seq[folder][pos + increment]]
                 pair_projection_matrices = [self.projection_per_seq[folder][pos],
                                             self.projection_per_seq[folder][pos + increment]]
-                # Read pair images with downsampling and cropping
-                pair_imgs = utils.get_pair_color_imgs(prefix_seq=folder, pair_indexes=pair_indexes, start_h=start_h,
-                                                      start_w=start_w,
-                                                      end_h=end_h, end_w=end_w, downsampling_factor=self.downsampling,
-                                                      is_hsv=self.is_hsv)
 
                 pair_mask_imgs, pair_sparse_depth_imgs, pair_flow_mask_imgs, pair_flow_imgs = \
-                    utils.get_torch_training_data(pair_images=pair_imgs, pair_extrinsics=pair_extrinsic_matrices,
+                    utils.get_torch_training_data(pair_extrinsics=pair_extrinsic_matrices,
                                                   pair_projections=
                                                   pair_projection_matrices, pair_indexes=pair_indexes,
                                                   point_cloud=self.point_cloud_per_seq[folder],
                                                   mask_boundary=self.mask_boundary_per_seq[folder],
                                                   view_indexes_per_point=self.view_indexes_per_point_per_seq[folder],
                                                   visible_view_indexes=self.visible_view_indexes_per_seq[folder],
-                                                  contamination_point_list=self.contamination_point_list_per_seq[folder],
-                                                  appearing_count_per_point=self.appearing_count_per_seq[folder],
-                                                  use_view_indexes_per_point=False,
-                                                  visualize=self.visualize)
+                                                  clean_point_list=self.clean_point_list_per_seq[
+                                                      folder])
 
                 if np.sum(pair_mask_imgs[0]) != 0 and np.sum(pair_mask_imgs[1]) != 0:
                     break
                 else:
                     idx = np.random.randint(0, len(self.image_file_names))
 
-            pair_mask_imgs_visible_only, pair_sparse_depth_imgs_visible_only, \
-            pair_flow_mask_imgs_visible_only, pair_flow_imgs_visible_only = \
-                utils.get_torch_training_data(pair_images=pair_imgs, pair_extrinsics=pair_extrinsic_matrices,
-                                              pair_projections=
-                                              pair_projection_matrices, pair_indexes=pair_indexes,
-                                              point_cloud=self.point_cloud_per_seq[folder],
-                                              mask_boundary=self.mask_boundary_per_seq[folder],
-                                              view_indexes_per_point=self.view_indexes_per_point_per_seq[folder],
-                                              visible_view_indexes=self.visible_view_indexes_per_seq[folder],
-                                              contamination_point_list=self.contamination_point_list_per_seq[folder],
-                                              appearing_count_per_point=self.appearing_count_per_seq[folder],
-                                              use_view_indexes_per_point=True,
-                                              visualize=self.visualize)
-
-            # Avoid zero division later
-            if np.sum(pair_mask_imgs_visible_only[0]) == 0 or np.sum(pair_mask_imgs_visible_only[1]) == 0:
-                pair_mask_imgs_visible_only = pair_mask_imgs
-                pair_sparse_depth_imgs_visible_only = pair_sparse_depth_imgs
-                pair_flow_mask_imgs_visible_only = pair_flow_mask_imgs
-                pair_flow_imgs_visible_only = pair_flow_imgs
+            # Read pair images with downsampling and cropping
+            pair_imgs = utils.get_pair_color_imgs(prefix_seq=folder, pair_indexes=pair_indexes, start_h=start_h,
+                                                  start_w=start_w,
+                                                  end_h=end_h, end_w=end_w, downsampling_factor=self.downsampling,
+                                                  is_hsv=self.is_hsv, rgb_mode=self.rgb_mode)
 
             # Calculate relative motion between two frames
             relative_motion = np.matmul(pair_extrinsic_matrices[0], np.linalg.inv(pair_extrinsic_matrices[1]))
-            rotation = np.reshape(relative_motion[:3, :3], (3, 3))
-            translation = np.reshape(relative_motion[:3, 3], (3, 1)) * 1.0 / self.estimated_scale_per_seq[folder]
+            rotation_1_wrt_2 = np.reshape(relative_motion[:3, :3], (3, 3)).astype(np.float32)
+            translation_1_wrt_2 = (
+                    np.reshape(relative_motion[:3, 3], (3, 1)) / self.estimated_scale_per_seq[folder]).astype(
+                np.float32)
 
             # Scale the sparse depth map
-            pair_sparse_depth_imgs[0] *= 1.0 / self.estimated_scale_per_seq[folder]
-            pair_sparse_depth_imgs[1] *= 1.0 / self.estimated_scale_per_seq[folder]
+            pair_sparse_depth_imgs[0] /= self.estimated_scale_per_seq[folder]
+            pair_sparse_depth_imgs[1] /= self.estimated_scale_per_seq[folder]
 
             # Format training data
-            training_color_img_1 = pair_imgs[0]
-            training_color_img_2 = pair_imgs[1]
+            color_img_1 = pair_imgs[0]
+            color_img_2 = pair_imgs[1]
 
-            training_rotation = rotation
-            training_rotation_inverse = np.transpose(rotation)
-            training_translation = translation
-            training_translation_inverse = np.matmul(-np.transpose(rotation), translation)
-            training_rotation = training_rotation.astype("float32")
-            training_rotation_inverse = training_rotation_inverse.astype("float32")
-            training_translation = training_translation.astype("float32")
-            training_translation_inverse = training_translation_inverse.astype("float32")
-            training_rotation = training_rotation.reshape((3, 3))
-            training_rotation_inverse = training_rotation_inverse.reshape((3, 3))
-            training_translation = training_translation.reshape((3, 1))
-            training_translation_inverse = training_translation_inverse.reshape((3, 1))
+            rotation_2_wrt_1 = np.transpose(rotation_1_wrt_2).astype(np.float32)
+            translation_2_wrt_1 = np.matmul(-np.transpose(rotation_1_wrt_2), translation_1_wrt_2).astype(np.float32)
 
-            # Full indexes
-            training_sparse_depth_img_1 = pair_sparse_depth_imgs[0].astype("float32")
-            training_sparse_depth_img_2 = pair_sparse_depth_imgs[1].astype("float32")
-            training_mask_img_1 = pair_mask_imgs[0].astype("float32")
-            training_mask_img_2 = pair_mask_imgs[1].astype("float32")
-            training_sparse_depth_img_1 = training_sparse_depth_img_1.reshape((training_sparse_depth_img_1.shape[0],
-                                                                               training_sparse_depth_img_1.shape[1], 1))
-            training_sparse_depth_img_2 = training_sparse_depth_img_2.reshape((training_sparse_depth_img_2.shape[0],
-                                                                               training_sparse_depth_img_2.shape[1], 1))
-            training_mask_img_1 = training_mask_img_1.reshape(
-                (training_mask_img_1.shape[0], training_mask_img_1.shape[1], 1))
-            training_mask_img_2 = training_mask_img_2.reshape(
-                (training_mask_img_2.shape[0], training_mask_img_2.shape[1], 1))
-            training_flow_mask_img_1 = pair_flow_mask_imgs[0].astype("float32")
-            training_flow_mask_img_2 = pair_flow_mask_imgs[1].astype("float32")
-            training_flow_img_1 = pair_flow_imgs[0].astype("float32")
-            training_flow_img_2 = pair_flow_imgs[1].astype("float32")
-            # Visible only
-            training_sparse_depth_img_1_visible_only = pair_sparse_depth_imgs_visible_only[0].astype("float32")
-            training_sparse_depth_img_2_visible_only = pair_sparse_depth_imgs_visible_only[1].astype("float32")
-            training_mask_img_1_visible_only = pair_mask_imgs_visible_only[0].astype("float32")
-            training_mask_img_2_visible_only = pair_mask_imgs_visible_only[1].astype("float32")
-            training_sparse_depth_img_1_visible_only = training_sparse_depth_img_1_visible_only.reshape(
-                (training_sparse_depth_img_1_visible_only.shape[0],
-                 training_sparse_depth_img_1_visible_only.shape[1], 1))
-            training_sparse_depth_img_2_visible_only = training_sparse_depth_img_2_visible_only.reshape(
-                (training_sparse_depth_img_2_visible_only.shape[0],
-                 training_sparse_depth_img_2_visible_only.shape[1], 1))
-            training_mask_img_1_visible_only = training_mask_img_1_visible_only.reshape(
-                (training_mask_img_1_visible_only.shape[0], training_mask_img_1_visible_only.shape[1], 1))
-            training_mask_img_2_visible_only = training_mask_img_2_visible_only.reshape(
-                (training_mask_img_2_visible_only.shape[0], training_mask_img_2_visible_only.shape[1], 1))
-            training_flow_mask_img_1_visible_only = pair_flow_mask_imgs_visible_only[0].astype("float32")
-            training_flow_mask_img_2_visible_only = pair_flow_mask_imgs_visible_only[1].astype("float32")
-            training_flow_img_1_visible_only = pair_flow_imgs_visible_only[0].astype("float32")
-            training_flow_img_2_visible_only = pair_flow_imgs_visible_only[1].astype("float32")
+            rotation_1_wrt_2 = rotation_1_wrt_2.reshape((3, 3))
+            rotation_2_wrt_1 = rotation_2_wrt_1.reshape((3, 3))
+            translation_1_wrt_2 = translation_1_wrt_2.reshape((3, 1))
+            translation_2_wrt_1 = translation_2_wrt_1.reshape((3, 1))
 
-            training_intrinsic_matrix = self.intrinsic_matrix_per_seq[folder][:3, :3]
-            training_intrinsic_matrix = training_intrinsic_matrix.astype("float32")
-            training_intrinsic_matrix = training_intrinsic_matrix.reshape((3, 3))
+            sparse_depth_img_1 = pair_sparse_depth_imgs[0].astype(np.float32)
+            sparse_depth_img_2 = pair_sparse_depth_imgs[1].astype(np.float32)
+            mask_img_1 = pair_mask_imgs[0].astype(np.float32)
+            mask_img_2 = pair_mask_imgs[1].astype(np.float32)
+            sparse_depth_img_1 = sparse_depth_img_1.reshape((sparse_depth_img_1.shape[0],
+                                                             sparse_depth_img_1.shape[1], 1))
+            sparse_depth_img_2 = sparse_depth_img_2.reshape((sparse_depth_img_2.shape[0],
+                                                             sparse_depth_img_2.shape[1], 1))
+            mask_img_1 = mask_img_1.reshape(
+                (mask_img_1.shape[0], mask_img_1.shape[1], 1))
+            mask_img_2 = mask_img_2.reshape(
+                (mask_img_2.shape[0], mask_img_2.shape[1], 1))
+            flow_mask_img_1 = pair_flow_mask_imgs[0].astype(np.float32)
+            flow_mask_img_2 = pair_flow_mask_imgs[1].astype(np.float32)
+            flow_img_1 = pair_flow_imgs[0].astype(np.float32)
+            flow_img_2 = pair_flow_imgs[1].astype(np.float32)
 
-            training_mask_boundary = self.mask_boundary_per_seq[folder].astype("float32") / 255.0
-            training_mask_boundary[training_mask_boundary > 0.9] = 1.0
-            training_mask_boundary[training_mask_boundary <= 0.9] = 0.0
-            training_mask_boundary = training_mask_boundary.reshape(
-                (training_mask_boundary.shape[0], training_mask_boundary.shape[1], 1))
+            intrinsic_matrix = self.intrinsic_matrix_per_seq[folder][:3, :3]
+            intrinsic_matrix = intrinsic_matrix.astype(np.float32)
+            intrinsic_matrix = intrinsic_matrix.reshape((3, 3))
 
-            if self.to_augment:
-                if self.phase == 'train':
-                    if self.is_hsv:
-                        training_color_img_1 = cv2.cvtColor(np.uint8(training_color_img_1), cv2.COLOR_HSV2BGR_FULL)
-                        training_color_img_2 = cv2.cvtColor(np.uint8(training_color_img_2), cv2.COLOR_HSV2BGR_FULL)
-                    # Data augmentation
-                    augmented_1 = self.transform(image=training_color_img_1)
-                    augmented_2 = self.transform(image=training_color_img_2)
-                    training_color_img_1 = augmented_1['image']
-                    training_color_img_2 = augmented_2['image']
-                    if self.is_hsv:
-                        training_color_img_1 = cv2.cvtColor(np.uint8(training_color_img_1),
-                                                            cv2.COLOR_BGR2HSV_FULL).astype('float32')
-                        training_color_img_2 = cv2.cvtColor(np.uint8(training_color_img_2),
-                                                            cv2.COLOR_BGR2HSV_FULL).astype('float32')
-                    # Normalize
-                    normalize = albu.Normalize(std=(0.5, 0.5, 0.5), mean=(0.5, 0.5, 0.5), max_pixel_value=255.0)
-                    training_color_img_1 = normalize(image=training_color_img_1)['image']
-                    training_color_img_2 = normalize(image=training_color_img_2)['image']
-                elif self.phase == 'validation':
-                    augmented_1 = self.transform(image=training_color_img_1)
-                    augmented_2 = self.transform(image=training_color_img_2)
-                    training_color_img_1 = augmented_1['image']
-                    training_color_img_2 = augmented_2['image']
+            mask_boundary = self.mask_boundary_per_seq[folder].astype(np.float32) / 255.0
+            mask_boundary[mask_boundary > 0.9] = 1.0
+            mask_boundary[mask_boundary <= 0.9] = 0.0
+            mask_boundary = mask_boundary.reshape((mask_boundary.shape[0], mask_boundary.shape[1], 1))
 
             if self.phase == 'train':
-                return [img_to_tensor(training_color_img_1), img_to_tensor(training_color_img_2),
-                        # Full indexes
-                        img_to_tensor(training_sparse_depth_img_1), img_to_tensor(training_sparse_depth_img_2),
-                        img_to_tensor(training_mask_img_1), img_to_tensor(training_mask_img_2),
-                        img_to_tensor(training_flow_img_1), img_to_tensor(training_flow_img_2),
-                        img_to_tensor(training_flow_mask_img_1), img_to_tensor(training_flow_mask_img_2),
-                        # Visible only
-                        img_to_tensor(training_sparse_depth_img_1_visible_only),
-                        img_to_tensor(training_sparse_depth_img_2_visible_only),
-                        img_to_tensor(training_mask_img_1_visible_only),
-                        img_to_tensor(training_mask_img_2_visible_only),
-                        img_to_tensor(training_flow_img_1_visible_only),
-                        img_to_tensor(training_flow_img_2_visible_only),
-                        img_to_tensor(training_flow_mask_img_1_visible_only),
-                        img_to_tensor(training_flow_mask_img_2_visible_only),
-
-                        img_to_tensor(training_mask_boundary),
-                        torch.from_numpy(training_rotation),
-                        torch.from_numpy(training_rotation_inverse), torch.from_numpy(training_translation),
-                        torch.from_numpy(training_translation_inverse), torch.from_numpy(training_intrinsic_matrix),
-                        folder]
-            elif self.phase == 'validation':
-                return [img_to_tensor(training_color_img_1), img_to_tensor(training_color_img_2),
-                        # Visible only
-                        img_to_tensor(training_sparse_depth_img_1),
-                        img_to_tensor(training_sparse_depth_img_2),
-                        img_to_tensor(training_mask_img_1), img_to_tensor(training_mask_img_2),
-                        img_to_tensor(training_flow_img_1_visible_only),
-                        img_to_tensor(training_flow_img_2_visible_only),
-                        img_to_tensor(training_flow_mask_img_1_visible_only),
-                        img_to_tensor(training_flow_mask_img_2_visible_only),
-                        img_to_tensor(training_mask_boundary),
-                        torch.from_numpy(training_rotation),
-                        torch.from_numpy(training_rotation_inverse), torch.from_numpy(training_translation),
-                        torch.from_numpy(training_translation_inverse), torch.from_numpy(training_intrinsic_matrix),
-                        folder]
+                if self.transform is not None:
+                    if self.is_hsv:
+                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1), cv2.COLOR_HSV2RGB_FULL)
+                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2), cv2.COLOR_HSV2RGB_FULL)
+                    # Data augmentation
+                    color_img_1 = self.transform(image=color_img_1)['image']
+                    color_img_2 = self.transform(image=color_img_2)['image']
+                    if self.is_hsv:
+                        color_img_1 = cv2.cvtColor(np.uint8(color_img_1),
+                                                   cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
+                        color_img_2 = cv2.cvtColor(np.uint8(color_img_2),
+                                                   cv2.COLOR_RGB2HSV_FULL).astype(np.float32)
+                # Normalize
+                color_img_1 = self.normalize(image=color_img_1)['image']
+                color_img_2 = self.normalize(image=color_img_2)['image']
             else:
-                return
+                # Normalize
+                color_img_1 = self.normalize(image=color_img_1)['image']
+                color_img_2 = self.normalize(image=color_img_2)['image']
+
+            return [img_to_tensor(color_img_1), img_to_tensor(color_img_2),
+                    img_to_tensor(sparse_depth_img_1), img_to_tensor(sparse_depth_img_2),
+                    img_to_tensor(mask_img_1), img_to_tensor(mask_img_2),
+                    img_to_tensor(flow_img_1), img_to_tensor(flow_img_2),
+                    img_to_tensor(flow_mask_img_1), img_to_tensor(flow_mask_img_2),
+                    img_to_tensor(mask_boundary),
+                    torch.from_numpy(rotation_1_wrt_2),
+                    torch.from_numpy(rotation_2_wrt_1), torch.from_numpy(translation_1_wrt_2),
+                    torch.from_numpy(translation_2_wrt_1), torch.from_numpy(intrinsic_matrix),
+                    folder, img_file_name]
+
         elif self.phase == 'test':
-            img_file_name = str(self.image_file_names[idx])
+            img_file_name = self.image_file_names[idx]
             # Retrieve the folder path
-            folder = img_file_name[:-12]
+            folder = str(img_file_name.parent)
             start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
-            training_color_img_1 = utils.get_test_color_img(img_file_name, start_h, end_h, start_w, end_w, self.downsampling, self.is_hsv)
-            if self.to_augment:
-                augmented_1 = self.transform(image=training_color_img_1)
-                training_color_img_1 = augmented_1['image']
-            training_intrinsic_matrix = self.intrinsic_matrix_per_seq[folder][:3, :3]
-            training_intrinsic_matrix = training_intrinsic_matrix.astype("float32")
-            training_intrinsic_matrix = training_intrinsic_matrix.reshape((3, 3))
+            color_img_1 = utils.get_test_color_img(str(img_file_name), start_h, end_h, start_w, end_w,
+                                                   self.downsampling, self.is_hsv, rgb_mode=self.rgb_mode)
+            # Normalize
+            color_img_1 = self.normalize(image=color_img_1)['image']
 
-            training_mask_boundary = self.mask_boundary_per_seq[folder].astype("float32") / 255.0
-            training_mask_boundary[training_mask_boundary > 0.9] = 1.0
-            training_mask_boundary[training_mask_boundary <= 0.9] = 0.0
-            training_mask_boundary = training_mask_boundary.reshape(
-                (training_mask_boundary.shape[0], training_mask_boundary.shape[1], 1))
+            intrinsic_matrix = self.intrinsic_matrix_per_seq[folder][:3, :3]
+            intrinsic_matrix = intrinsic_matrix.astype(np.float32)
+            intrinsic_matrix = intrinsic_matrix.reshape((3, 3))
 
-            return [img_to_tensor(training_color_img_1),
-                    img_to_tensor(training_mask_boundary),
-                    torch.from_numpy(training_intrinsic_matrix),
-                    img_file_name[-12:-4]]
-        else:
-            return
+            mask_boundary = self.mask_boundary_per_seq[folder].astype(np.float32) / 255.0
+            mask_boundary[mask_boundary > 0.9] = 1.0
+            mask_boundary[mask_boundary <= 0.9] = 0.0
+            mask_boundary = mask_boundary.reshape((mask_boundary.shape[0], mask_boundary.shape[1], 1))
 
-    # def __getitem__(self, idx):
-    #     while True:
-    #         img_file_name = str(self.image_file_names[idx])
-    #         # Retrieve the folder path
-    #         folder = img_file_name[:-12]
-    #         # Randomly pick one adjacent frame
-    #         # We assume the filename has 8 logits followed by ".jpg"
-    #         start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
-    #         pos, increment = utils.generating_pos_and_increment(idx=idx,
-    #                                                             visible_view_indexes=self.visible_view_indexes_per_seq[
-    #                                                                 folder],
-    #                                                             adjacent_range=self.adjacent_range)
-    #         # Get pair visible view indexes and pair extrinsic and projection matrices
-    #         pair_indexes = [self.visible_view_indexes_per_seq[folder][pos],
-    #                         self.visible_view_indexes_per_seq[folder][pos + increment]]
-    #         pair_extrinsic_matrices = [self.extrinsics_per_seq[folder][pos],
-    #                                    self.extrinsics_per_seq[folder][pos + increment]]
-    #         pair_projection_matrices = [self.projection_per_seq[folder][pos],
-    #                                     self.projection_per_seq[folder][pos + increment]]
-    #         # Read pair images with downsampling and cropping
-    #         pair_imgs = utils.get_pair_color_imgs(prefix_seq=folder, pair_indexes=pair_indexes, start_h=start_h,
-    #                                               start_w=start_w,
-    #                                               end_h=end_h, end_w=end_w, downsampling_factor=self.downsampling,
-    #                                               is_hsv=self.is_hsv)
-    #
-    #         pair_mask_imgs, pair_sparse_depth_imgs, pair_flow_mask_imgs, pair_flow_imgs = \
-    #             utils.get_torch_training_data(pair_images=pair_imgs, pair_extrinsics=pair_extrinsic_matrices,
-    #                                           pair_projections=
-    #                                           pair_projection_matrices, pair_indexes=pair_indexes,
-    #                                           point_cloud=self.point_cloud_per_seq[folder],
-    #                                           mask_boundary=self.mask_boundary_per_seq[folder],
-    #                                           view_indexes_per_point=self.view_indexes_per_point_per_seq[folder],
-    #                                           visible_view_indexes=self.visible_view_indexes_per_seq[folder],
-    #                                           contamination_point_list=self.contamination_point_list_per_seq[folder],
-    #                                           appearing_count_per_point=self.appearing_count_per_seq[folder],
-    #                                           use_view_indexes_per_point=False,
-    #                                           visualize=self.visualize)
-    #
-    #         if np.sum(pair_mask_imgs[0]) != 0 and np.sum(pair_mask_imgs[1]) != 0:
-    #             break
-    #         else:
-    #             idx = np.random.randint(0, len(self.image_file_names))
-    #
-    #     pair_mask_imgs_visible_only, pair_sparse_depth_imgs_visible_only, \
-    #     pair_flow_mask_imgs_visible_only, pair_flow_imgs_visible_only = \
-    #         utils.get_torch_training_data(pair_images=pair_imgs, pair_extrinsics=pair_extrinsic_matrices,
-    #                                       pair_projections=
-    #                                       pair_projection_matrices, pair_indexes=pair_indexes,
-    #                                       point_cloud=self.point_cloud_per_seq[folder],
-    #                                       mask_boundary=self.mask_boundary_per_seq[folder],
-    #                                       view_indexes_per_point=self.view_indexes_per_point_per_seq[folder],
-    #                                       visible_view_indexes=self.visible_view_indexes_per_seq[folder],
-    #                                       contamination_point_list=self.contamination_point_list_per_seq[folder],
-    #                                       appearing_count_per_point=self.appearing_count_per_seq[folder],
-    #                                       use_view_indexes_per_point=True,
-    #                                       visualize=self.visualize)
-    #
-    #     # Avoid zero division
-    #     if np.sum(pair_mask_imgs_visible_only[0]) == 0 or np.sum(pair_mask_imgs_visible_only[1]) == 0:
-    #         pair_mask_imgs_visible_only = pair_mask_imgs
-    #         pair_sparse_depth_imgs_visible_only = pair_sparse_depth_imgs
-    #         pair_flow_mask_imgs_visible_only = pair_flow_mask_imgs
-    #         pair_flow_imgs_visible_only = pair_flow_imgs
-    #     # Calculate relative motion between two frames
-    #     relative_motion = np.matmul(pair_extrinsic_matrices[0], np.linalg.inv(pair_extrinsic_matrices[1]))
-    #     rotation = np.reshape(relative_motion[:3, :3], (3, 3))
-    #     translation = np.reshape(relative_motion[:3, 3], (3, 1)) * 1.0 / self.estimated_scale_per_seq[folder]
-    #     # Scale the sparse depth map
-    #     pair_sparse_depth_imgs[0] *= 1.0 / self.estimated_scale_per_seq[folder]
-    #     pair_sparse_depth_imgs[1] *= 1.0 / self.estimated_scale_per_seq[folder]
-    #     # Format training data
-    #     training_color_img_1 = pair_imgs[0]
-    #     training_color_img_2 = pair_imgs[1]
-    #     training_rotation = rotation
-    #     training_rotation_inverse = np.transpose(rotation)
-    #     training_translation = translation
-    #     training_translation_inverse = np.matmul(-np.transpose(rotation), translation)
-    #     training_rotation = training_rotation.astype("float32")
-    #     training_rotation_inverse = training_rotation_inverse.astype("float32")
-    #     training_translation = training_translation.astype("float32")
-    #     training_translation_inverse = training_translation_inverse.astype("float32")
-    #     training_rotation = training_rotation.reshape((3, 3))
-    #     training_rotation_inverse = training_rotation_inverse.reshape((3, 3))
-    #     training_translation = training_translation.reshape((3, 1))
-    #     training_translation_inverse = training_translation_inverse.reshape((3, 1))
-    #     # Full indexes
-    #     training_sparse_depth_img_1 = pair_sparse_depth_imgs[0].astype("float32")
-    #     training_sparse_depth_img_2 = pair_sparse_depth_imgs[1].astype("float32")
-    #     training_mask_img_1 = pair_mask_imgs[0].astype("float32")
-    #     training_mask_img_2 = pair_mask_imgs[1].astype("float32")
-    #     training_sparse_depth_img_1 = training_sparse_depth_img_1.reshape((training_sparse_depth_img_1.shape[0],
-    #                                                                        training_sparse_depth_img_1.shape[1], 1))
-    #     training_sparse_depth_img_2 = training_sparse_depth_img_2.reshape((training_sparse_depth_img_2.shape[0],
-    #                                                                        training_sparse_depth_img_2.shape[1], 1))
-    #     training_mask_img_1 = training_mask_img_1.reshape(
-    #         (training_mask_img_1.shape[0], training_mask_img_1.shape[1], 1))
-    #     training_mask_img_2 = training_mask_img_2.reshape(
-    #         (training_mask_img_2.shape[0], training_mask_img_2.shape[1], 1))
-    #     training_flow_mask_img_1 = pair_flow_mask_imgs[0].astype("float32")
-    #     training_flow_mask_img_2 = pair_flow_mask_imgs[1].astype("float32")
-    #     training_flow_img_1 = pair_flow_imgs[0].astype("float32")
-    #     training_flow_img_2 = pair_flow_imgs[1].astype("float32")
-    #     # Visible only
-    #     training_sparse_depth_img_1_visible_only = pair_sparse_depth_imgs_visible_only[0].astype("float32")
-    #     training_sparse_depth_img_2_visible_only = pair_sparse_depth_imgs_visible_only[1].astype("float32")
-    #     training_mask_img_1_visible_only = pair_mask_imgs_visible_only[0].astype("float32")
-    #     training_mask_img_2_visible_only = pair_mask_imgs_visible_only[1].astype("float32")
-    #     training_sparse_depth_img_1_visible_only = training_sparse_depth_img_1_visible_only.reshape(
-    #         (training_sparse_depth_img_1_visible_only.shape[0],
-    #          training_sparse_depth_img_1_visible_only.shape[1], 1))
-    #     training_sparse_depth_img_2_visible_only = training_sparse_depth_img_2_visible_only.reshape(
-    #         (training_sparse_depth_img_2_visible_only.shape[0],
-    #          training_sparse_depth_img_2_visible_only.shape[1], 1))
-    #     training_mask_img_1_visible_only = training_mask_img_1_visible_only.reshape(
-    #         (training_mask_img_1_visible_only.shape[0], training_mask_img_1_visible_only.shape[1], 1))
-    #     training_mask_img_2_visible_only = training_mask_img_2_visible_only.reshape(
-    #         (training_mask_img_2_visible_only.shape[0], training_mask_img_2_visible_only.shape[1], 1))
-    #     training_flow_mask_img_1_visible_only = pair_flow_mask_imgs_visible_only[0].astype("float32")
-    #     training_flow_mask_img_2_visible_only = pair_flow_mask_imgs_visible_only[1].astype("float32")
-    #     training_flow_img_1_visible_only = pair_flow_imgs_visible_only[0].astype("float32")
-    #     training_flow_img_2_visible_only = pair_flow_imgs_visible_only[1].astype("float32")
-    #
-    #     training_intrinsic_matrix = self.intrinsic_matrix_per_seq[folder][:3, :3]
-    #     training_intrinsic_matrix = training_intrinsic_matrix.astype("float32")
-    #     training_intrinsic_matrix = training_intrinsic_matrix.reshape((3, 3))
-    #
-    #     training_mask_boundary = self.mask_boundary_per_seq[folder].astype("float32") / 255.0
-    #     training_mask_boundary[training_mask_boundary > 0.9] = 1.0
-    #     training_mask_boundary[training_mask_boundary <= 0.9] = 0.0
-    #     training_mask_boundary = training_mask_boundary.reshape(
-    #         (training_mask_boundary.shape[0], training_mask_boundary.shape[1], 1))
-    #
-    #     if self.to_augment:
-    #         if self.phase == 'train':
-    #             if self.is_hsv:
-    #                 training_color_img_1 = cv2.cvtColor(np.uint8(training_color_img_1), cv2.COLOR_HSV2BGR_FULL)
-    #                 training_color_img_2 = cv2.cvtColor(np.uint8(training_color_img_2), cv2.COLOR_HSV2BGR_FULL)
-    #             # Data augmentation
-    #             augmented_1 = self.transform(image=training_color_img_1)
-    #             augmented_2 = self.transform(image=training_color_img_2)
-    #             training_color_img_1 = augmented_1['image']
-    #             training_color_img_2 = augmented_2['image']
-    #             if self.is_hsv:
-    #                 training_color_img_1 = cv2.cvtColor(np.uint8(training_color_img_1), cv2.COLOR_BGR2HSV_FULL).astype(
-    #                     'float32')
-    #                 training_color_img_2 = cv2.cvtColor(np.uint8(training_color_img_2), cv2.COLOR_BGR2HSV_FULL).astype(
-    #                     'float32')
-    #             # Normalize
-    #             normalize = albu.Normalize(std=(0.5, 0.5, 0.5), mean=(0.5, 0.5, 0.5), max_pixel_value=255.0)
-    #             training_color_img_1 = normalize(image=training_color_img_1)['image']
-    #             training_color_img_2 = normalize(image=training_color_img_2)['image']
-    #         else:
-    #             augmented_1 = self.transform(image=training_color_img_1)
-    #             augmented_2 = self.transform(image=training_color_img_2)
-    #             training_color_img_1 = augmented_1['image']
-    #             training_color_img_2 = augmented_2['image']
-    #
-    #     if self.phase == 'train':
-    #         return [img_to_tensor(training_color_img_1), img_to_tensor(training_color_img_2),
-    #                 # Full indexes
-    #                 img_to_tensor(training_sparse_depth_img_1), img_to_tensor(training_sparse_depth_img_2),
-    #                 img_to_tensor(training_mask_img_1), img_to_tensor(training_mask_img_2),
-    #                 img_to_tensor(training_flow_img_1), img_to_tensor(training_flow_img_2),
-    #                 img_to_tensor(training_flow_mask_img_1), img_to_tensor(training_flow_mask_img_2),
-    #                 # Visible only
-    #                 img_to_tensor(training_sparse_depth_img_1_visible_only),
-    #                 img_to_tensor(training_sparse_depth_img_2_visible_only),
-    #                 img_to_tensor(training_mask_img_1_visible_only), img_to_tensor(training_mask_img_2_visible_only),
-    #                 img_to_tensor(training_flow_img_1_visible_only),
-    #                 img_to_tensor(training_flow_img_2_visible_only),
-    #                 img_to_tensor(training_flow_mask_img_1_visible_only),
-    #                 img_to_tensor(training_flow_mask_img_2_visible_only),
-    #                 img_to_tensor(training_mask_boundary),
-    #                 torch.from_numpy(training_rotation),
-    #                 torch.from_numpy(training_rotation_inverse), torch.from_numpy(training_translation),
-    #                 torch.from_numpy(training_translation_inverse), torch.from_numpy(training_intrinsic_matrix), folder]
-    #     elif self.phase == "validation":
-    #         return [img_to_tensor(training_color_img_1), img_to_tensor(training_color_img_2),
-    #                 # Visible only
-    #                 img_to_tensor(training_sparse_depth_img_1),
-    #                 img_to_tensor(training_sparse_depth_img_2),
-    #                 img_to_tensor(training_mask_img_1), img_to_tensor(training_mask_img_2),
-    #                 img_to_tensor(training_flow_img_1_visible_only),
-    #                 img_to_tensor(training_flow_img_2_visible_only),
-    #                 img_to_tensor(training_flow_mask_img_1_visible_only),
-    #                 img_to_tensor(training_flow_mask_img_2_visible_only),
-    #                 img_to_tensor(training_mask_boundary),
-    #                 torch.from_numpy(training_rotation),
-    #                 torch.from_numpy(training_rotation_inverse), torch.from_numpy(training_translation),
-    #                 torch.from_numpy(training_translation_inverse), torch.from_numpy(training_intrinsic_matrix), folder]
-    #     elif self.phase == "test":
-    #         return [img_to_tensor(training_color_img_1), img_to_tensor(training_color_img_2),
-    #                 # Visible only
-    #                 img_to_tensor(training_sparse_depth_img_1),
-    #                 img_to_tensor(training_sparse_depth_img_2),
-    #                 img_to_tensor(training_mask_img_1), img_to_tensor(training_mask_img_2),
-    #                 img_to_tensor(training_flow_img_1_visible_only),
-    #                 img_to_tensor(training_flow_img_2_visible_only),
-    #                 img_to_tensor(training_flow_mask_img_1_visible_only),
-    #                 img_to_tensor(training_flow_mask_img_2_visible_only),
-    #                 img_to_tensor(training_mask_boundary),
-    #                 torch.from_numpy(training_rotation),
-    #                 torch.from_numpy(training_rotation_inverse), torch.from_numpy(training_translation),
-    #                 torch.from_numpy(training_translation_inverse), torch.from_numpy(training_intrinsic_matrix),
-    #                 img_file_name[-12:-4]]
+            return [img_to_tensor(color_img_1),
+                    img_to_tensor(mask_boundary),
+                    torch.from_numpy(intrinsic_matrix),
+                    img_file_name.name[-12:-4]]
