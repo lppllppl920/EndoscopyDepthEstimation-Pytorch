@@ -170,7 +170,7 @@ tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Traini
 
 
 tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Evaluation/depth_estimation_run_7_7_0_5_bag_4" --samples_per_plugin images=1000
-tensorboard --logdir="/home/xliu89/tmp_ramfs/Training/depth_estimation_run_7_10_2_20_bag_2"
+tensorboard --logdir="/home/xliu89/tmp_ramfs/Training/depth_estimation_run_7_22_0_51_bag_5" --samples_per_plugin images=1000
 tensorboard --logdir="/home/xliu89/tmp_ramfs/Training/depth_estimation_run_7_8_0_52_bag_4" --samples_per_plugin images=1000
 tensorboard --logdir="/home/xliu89/RemoteData/Sinus Project Data/xingtong/Training/depth_estimation_run_7_4_15_19_bag_2"
 

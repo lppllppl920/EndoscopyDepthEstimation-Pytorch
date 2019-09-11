@@ -98,14 +98,51 @@ class NormalizedL2Loss(nn.Module):
 
     def forward(self, x):
         depth_maps, warped_depth_maps, intersect_masks = x
-
-        mean_value = torch.sum(intersect_masks * depth_maps, dim=(1, 2, 3), keepdim=False) / (
-                self.eps + torch.sum(intersect_masks, dim=(1, 2, 3),
-                                     keepdim=False))
+        with torch.no_grad():
+            mean_value = torch.sum(intersect_masks * depth_maps, dim=(1, 2, 3), keepdim=False) / (
+                    self.eps + torch.sum(intersect_masks, dim=(1, 2, 3),
+                                         keepdim=False))
         loss = torch.sum(intersect_masks * (depth_maps - warped_depth_maps) * (depth_maps - warped_depth_maps),
                          dim=(1, 2, 3), keepdim=False) / (0.5 * torch.sum(
             intersect_masks * (depth_maps * depth_maps + warped_depth_maps * warped_depth_maps), dim=(1, 2, 3),
             keepdim=False) + 1.0e-5 * mean_value * mean_value)
+        return torch.mean(loss)
+
+
+class NormalizedDistanceLoss(nn.Module):
+    def __init__(self, height, width, eps=1.0e-5):
+        super(NormalizedDistanceLoss, self).__init__()
+        self.eps = eps
+        self.y_grid, self.x_grid = torch.meshgrid(
+            [torch.arange(start=0, end=height, dtype=torch.float32).cuda(),
+             torch.arange(start=0, end=width, dtype=torch.float32).cuda()])
+        self.y_grid = self.y_grid.view(1, 1, height, width)
+        self.x_grid = self.x_grid.view(1, 1, height, width)
+
+    def forward(self, x):
+        depth_maps, warped_depth_maps, intersect_masks, intrinsics = x
+        fx = intrinsics[:, 0, 0].view(-1, 1, 1, 1)
+        fy = intrinsics[:, 1, 1].view(-1, 1, 1, 1)
+        cx = intrinsics[:, 0, 2].view(-1, 1, 1, 1)
+        cy = intrinsics[:, 1, 2].view(-1, 1, 1, 1)
+
+        with torch.no_grad():
+            mean_value = torch.sum(intersect_masks * depth_maps, dim=(1, 2, 3), keepdim=False) / (
+                    self.eps + torch.sum(intersect_masks, dim=(1, 2, 3),
+                                         keepdim=False))
+
+        location_3d_maps = torch.cat(
+            [(self.x_grid - cx) / fx * depth_maps, (self.y_grid - cy) / fy * depth_maps, depth_maps], dim=1)
+
+        warped_location_3d_maps = torch.cat(
+            [(self.x_grid - cx) / fx * warped_depth_maps, (self.y_grid - cy) / fy * warped_depth_maps,
+             warped_depth_maps], dim=1)
+
+        loss = 2.0 * torch.sum(intersect_masks * torch.abs(location_3d_maps - warped_location_3d_maps), dim=(1, 2, 3),
+                               keepdim=False) / \
+               (1.0e-5 * mean_value + torch.sum(
+                   intersect_masks * (depth_maps + torch.abs(warped_depth_maps)), dim=(1, 2, 3),
+                   keepdim=False))
         return torch.mean(loss)
 
 
@@ -147,3 +184,44 @@ class MaskedScaleInvariantLoss(nn.Module):
         loss_2 = (sum_2 * sum_2) / (weighted_sum * weighted_sum)
 
         return torch.mean(loss_1 + loss_2)
+
+
+class AbsRelError(nn.Module):
+    def __init__(self, eps=1.0e-8):
+        super(AbsRelError, self).__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        scaled_depth_maps, sparse_depth_maps, sparse_depth_masks = x
+        loss = torch.sum(
+            (sparse_depth_masks * torch.abs(scaled_depth_maps - sparse_depth_maps)) / (self.eps + sparse_depth_maps),
+            dim=(1, 2, 3), keepdim=False) / torch.sum(sparse_depth_masks, dim=(1, 2, 3), keepdim=False)
+        return loss
+
+
+class Threshold(nn.Module):
+    def __init__(self, eps=1.0e-8):
+        super(Threshold, self).__init__()
+        self.eps = eps
+
+    def forward(self, x):
+        scaled_depth_maps, sparse_depth_maps, sparse_depth_masks = x
+        threshold_map = \
+            sparse_depth_masks * torch.max(scaled_depth_maps * sparse_depth_masks / (self.eps + sparse_depth_maps),
+                                           sparse_depth_maps / (self.eps + scaled_depth_maps * sparse_depth_masks)) + (
+                    1.0 - sparse_depth_masks) * 10.0
+
+        sigma_1 = torch.sum((threshold_map < 1.25).float(), dim=(1, 2, 3), keepdim=False) / torch.sum(
+            sparse_depth_masks,
+            dim=(1, 2, 3),
+            keepdim=False)
+        sigma_2 = torch.sum((threshold_map < 1.25 * 1.25).float(), dim=(1, 2, 3), keepdim=False) / torch.sum(
+            sparse_depth_masks,
+            dim=(1, 2, 3),
+            keepdim=False)
+        sigma_3 = torch.sum((threshold_map < 1.25 * 1.25 * 1.25).float(), dim=(1, 2, 3), keepdim=False) / torch.sum(
+            sparse_depth_masks,
+            dim=(1, 2, 3),
+            keepdim=False)
+
+        return [sigma_1, sigma_2, sigma_3]

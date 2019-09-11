@@ -68,7 +68,10 @@ def pre_processing_data(process_id, folder_list, downsampling, network_downsampl
             start_w=start_w, downsampling_factor=downsampling)
         queue_intrinsic_matrix.put([folder_str, cropped_downsampled_undistorted_intrinsic_matrix])
         # Read sparse point cloud from SfM
-        point_cloud = utils.read_point_cloud(folder)
+        if inlier_percentage == 1:
+            point_cloud = utils.read_point_cloud(str(folder / "structure.ply"))
+        else:
+            point_cloud = utils.read_point_cloud(str(folder / "structure_filtered.ply"))
         queue_point_cloud.put([folder_str, point_cloud])
         # self.point_cloud_per_seq[folder] = point_cloud
         # Read visible view indexes per point
@@ -341,6 +344,9 @@ class SfMDataset(Dataset):
                                                                     self.visible_view_indexes_per_seq[
                                                                         folder],
                                                                     adjacent_range=self.adjacent_range)
+                img_file_name = self.visible_view_indexes_per_seq[folder][
+                    idx % len(self.visible_view_indexes_per_seq[folder])]
+
                 # Get pair visible view indexes and pair extrinsic and projection matrices
                 pair_indexes = [self.visible_view_indexes_per_seq[folder][pos],
                                 self.visible_view_indexes_per_seq[folder][pos + increment]]
@@ -450,14 +456,14 @@ class SfMDataset(Dataset):
                     torch.from_numpy(rotation_1_wrt_2),
                     torch.from_numpy(rotation_2_wrt_1), torch.from_numpy(translation_1_wrt_2),
                     torch.from_numpy(translation_2_wrt_1), torch.from_numpy(intrinsic_matrix),
-                    folder]
+                    folder, img_file_name]
 
         elif self.phase == 'test':
             img_file_name = self.image_file_names[idx]
             # Retrieve the folder path
             folder = str(img_file_name.parent)
             start_h, end_h, start_w, end_w = self.crop_positions_per_seq[folder]
-            color_img_1 = utils.get_test_color_img(img_file_name, start_h, end_h, start_w, end_w,
+            color_img_1 = utils.get_test_color_img(str(img_file_name), start_h, end_h, start_w, end_w,
                                                    self.downsampling, self.is_hsv, rgb_mode=self.rgb_mode)
             # Normalize
             color_img_1 = self.normalize(image=color_img_1)['image']
@@ -474,4 +480,4 @@ class SfMDataset(Dataset):
             return [img_to_tensor(color_img_1),
                     img_to_tensor(mask_boundary),
                     torch.from_numpy(intrinsic_matrix),
-                    img_file_name[-12:-4]]
+                    img_file_name.name[-12:-4]]

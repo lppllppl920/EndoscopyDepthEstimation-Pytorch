@@ -52,6 +52,7 @@ if __name__ == '__main__':
     parser.add_argument('--zero_division_epsilon', type=float, default=1.0e-8, help='epsilon to prevent zero division')
     parser.add_argument('--display_interval', type=int, default=10, help='iteration interval for image display')
     parser.add_argument('--testing_patient_id', type=int, help='id of the testing patient')
+    parser.add_argument('--validation_patient_id', nargs='+', type=int, help='id of the valiadtion patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
     parser.add_argument('--load_trained_model', action='store_true',
                         help='whether to load trained student model')
@@ -95,6 +96,7 @@ if __name__ == '__main__':
     wsl_epsilon = args.zero_division_epsilon
     display_each = args.display_interval
     testing_patient_id = args.testing_patient_id
+    validation_patient_id = args.validation_patient_id
     load_intermediate_data = args.load_intermediate_data
     load_trained_model = args.load_trained_model
     n_epochs = args.number_epoch
@@ -132,11 +134,12 @@ if __name__ == '__main__':
         ]),
     ], p=1.)
 
-    log_root = Path(training_result_root) / "depth_estimation_run_{}_{}_{}_{}_bag_{}".format(currentDT.month,
-                                                                                             currentDT.day,
-                                                                                             currentDT.hour,
-                                                                                             currentDT.minute,
-                                                                                             testing_patient_id)
+    log_root = Path(training_result_root) / "depth_estimation_training_run_{}_{}_{}_{}_test_id_{}".format(
+        currentDT.month,
+        currentDT.day,
+        currentDT.hour,
+        currentDT.minute,
+        testing_patient_id)
     if not log_root.exists():
         log_root.mkdir()
     writer = SummaryWriter(logdir=str(log_root))
@@ -144,24 +147,24 @@ if __name__ == '__main__':
 
     # Get color image filenames
     train_filenames, val_filenames, test_filenames = utils.get_color_file_names_by_bag(training_data_root,
+                                                                                       validation_patient_id=validation_patient_id,
                                                                                        testing_patient_id=testing_patient_id,
-                                                                                       id_range=id_range,
-                                                                                       split_ratio=(0.5, 0.5))
-    training_folder_list, val_folder_list = utils.get_parent_folder_names(training_data_root,
-                                                                          testing_patient_id=testing_patient_id,
-                                                                          id_range=id_range)
+                                                                                       id_range=id_range)
+    folder_list = utils.get_parent_folder_names(training_data_root,
+                                                id_range=id_range)
 
     # Build training and validation dataset
     train_dataset = dataset.SfMDataset(image_file_names=train_filenames,
-                                       folder_list=training_folder_list + val_folder_list,
+                                       folder_list=folder_list,
                                        adjacent_range=adjacent_range, transform=training_transforms,
                                        downsampling=input_downsampling,
                                        network_downsampling=network_downsampling, inlier_percentage=inlier_percentage,
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
-                                       phase="train", is_hsv=is_hsv, num_pre_workers=12, visible_interval=20)
+                                       phase="train", is_hsv=is_hsv, num_pre_workers=12, visible_interval=30,
+                                       rgb_mode="rgb")
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
-                                            folder_list=training_folder_list + val_folder_list,
+                                            folder_list=folder_list,
                                             adjacent_range=adjacent_range,
                                             transform=None,
                                             downsampling=input_downsampling,
@@ -170,7 +173,7 @@ if __name__ == '__main__':
                                             use_store_data=True,
                                             store_data_root=training_data_root,
                                             phase="validation", is_hsv=is_hsv,
-                                            num_pre_workers=12, visible_interval=20)
+                                            num_pre_workers=12, visible_interval=30, rgb_mode="rgb")
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=num_workers)
@@ -290,12 +293,12 @@ if __name__ == '__main__':
             if batch % display_each == 0:
                 colors_1_display, pred_depths_1_display, sparse_depths_1_display = utils.display_color_pred_depth_sparse_depth(
                     idx=1, step=step, writer=writer, colors_1=colors_1,
-                    pred_depth_maps_1=predicted_depth_maps_1,
+                    pred_depth_maps_1=boundaries * predicted_depth_maps_1,
                     sparse_depth_maps_1=sparse_depths_1,
                     phase="Training", return_image=True)
                 colors_2_display, pred_depths_2_display, sparse_depths_2_display = utils.display_color_pred_depth_sparse_depth(
                     idx=2, step=step, writer=writer, colors_1=colors_2,
-                    pred_depth_maps_1=predicted_depth_maps_2,
+                    pred_depth_maps_1=boundaries * predicted_depth_maps_2,
                     sparse_depth_maps_1=sparse_depths_2,
                     phase="Training", return_image=True)
 
@@ -351,12 +354,12 @@ if __name__ == '__main__':
                 if batch % display_each == 0:
                     colors_1_display, pred_depths_1_display, sparse_depths_1_display = utils.display_color_pred_depth_sparse_depth(
                         idx=1, step=step, writer=writer, colors_1=colors_1,
-                        pred_depth_maps_1=predicted_depth_maps_1,
+                        pred_depth_maps_1=boundaries * predicted_depth_maps_1,
                         sparse_depth_maps_1=sparse_depths_1,
                         phase="Validation", return_image=True)
                     colors_2_display, pred_depths_2_display, sparse_depths_2_display = utils.display_color_pred_depth_sparse_depth(
                         idx=2, step=step, writer=writer, colors_1=colors_2,
-                        pred_depth_maps_1=predicted_depth_maps_2,
+                        pred_depth_maps_1=boundaries * predicted_depth_maps_2,
                         sparse_depth_maps_1=sparse_depths_2,
                         phase="Validation", return_image=True)
                     utils.stack_and_display(phase="Validation", title="Results (c1, d1, sd1, c2, d2, sd2)",

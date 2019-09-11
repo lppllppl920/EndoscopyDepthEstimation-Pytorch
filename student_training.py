@@ -52,7 +52,8 @@ if __name__ == '__main__':
     parser.add_argument('--validation_interval', type=int, default=1, help='epoch interval for validation')
     parser.add_argument('--zero_division_epsilon', type=float, default=1.0e-8, help='epsilon to prevent zero division')
     parser.add_argument('--display_interval', type=int, default=10, help='iteration interval for image display')
-    parser.add_argument('--testing_patient_id', type=int, help='id of the testing patient')
+    parser.add_argument('--testing_patient_id', nargs='+', type=int, help='id of the testing patient')
+    parser.add_argument('--validation_patient_id', nargs='+', type=int, help='id of the valiadtion patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
     parser.add_argument('--load_trained_model', action='store_true',
                         help='whether to load trained student model')
@@ -97,6 +98,7 @@ if __name__ == '__main__':
     wsl_epsilon = args.zero_division_epsilon
     display_each = args.display_interval
     testing_patient_id = args.testing_patient_id
+    validation_patient_id = args.validation_patient_id
     load_intermediate_data = args.load_intermediate_data
     load_trained_model = args.load_trained_model
     n_epochs = args.number_epoch
@@ -134,11 +136,12 @@ if __name__ == '__main__':
         ]),
     ], p=1.)
 
-    log_root = Path(training_result_root) / "depth_estimation_run_{}_{}_{}_{}_bag_{}".format(currentDT.month,
-                                                                                             currentDT.day,
-                                                                                             currentDT.hour,
-                                                                                             currentDT.minute,
-                                                                                             testing_patient_id)
+    log_root = Path(training_result_root) / "depth_estimation_training_run_{}_{}_{}_{}_test_id_{}".format(
+        currentDT.month,
+        currentDT.day,
+        currentDT.hour,
+        currentDT.minute,
+        testing_patient_id)
     if not log_root.exists():
         log_root.mkdir()
     writer = SummaryWriter(logdir=str(log_root))
@@ -146,25 +149,24 @@ if __name__ == '__main__':
 
     # Get color image filenames
     train_filenames, val_filenames, test_filenames = utils.get_color_file_names_by_bag(training_data_root,
+                                                                                       validation_patient_id=validation_patient_id,
                                                                                        testing_patient_id=testing_patient_id,
-                                                                                       id_range=id_range,
-                                                                                       split_ratio=(0.5, 0.5))
-    training_folder_list, val_folder_list = utils.get_parent_folder_names(training_data_root,
-                                                                          testing_patient_id=testing_patient_id,
-                                                                          id_range=id_range)
+                                                                                       id_range=id_range)
+    folder_list = utils.get_parent_folder_names(training_data_root,
+                                                id_range=id_range)
 
     # Build training and validation dataset
     train_dataset = dataset.SfMDataset(image_file_names=train_filenames,
-                                       folder_list=training_folder_list + val_folder_list,
+                                       folder_list=folder_list,
                                        adjacent_range=adjacent_range, transform=training_transforms,
                                        downsampling=input_downsampling,
                                        network_downsampling=network_downsampling, inlier_percentage=inlier_percentage,
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
                                        phase="train", is_hsv=is_hsv,
-                                       num_pre_workers=num_workers, visible_interval=20, rgb_mode="bgr")
+                                       num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
-                                            folder_list=training_folder_list + val_folder_list,
+                                            folder_list=folder_list,
                                             adjacent_range=adjacent_range,
                                             transform=None,
                                             downsampling=input_downsampling,
@@ -173,7 +175,7 @@ if __name__ == '__main__':
                                             use_store_data=True,
                                             store_data_root=training_data_root,
                                             phase="validation", is_hsv=is_hsv,
-                                            num_pre_workers=num_workers, visible_interval=20, rgb_mode="bgr")
+                                            num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=num_workers)
@@ -200,7 +202,7 @@ if __name__ == '__main__':
     flow_from_depth_layer = models.FlowfromDepthLayer()
     # Loss functions
     sparse_flow_loss_function = losses.SparseMaskedL1Loss()
-    depth_consistency_loss_function = losses.NormalizedL2Loss()
+    depth_consistency_loss_function = losses.NormalizedDistanceLoss(height=height, width=width)
 
     # Load previous student model, lr scheduler, and so on
     if load_trained_model:
@@ -232,11 +234,10 @@ if __name__ == '__main__':
         mean_depth_consistency_loss = 0.0
         mean_sparse_flow_loss = 0.0
 
-        # # TODO: Fixed for network training
         if epoch <= 20:
             depth_consistency_weight = 0.1
         else:
-            depth_consistency_weight = 5.0
+            depth_consistency_weight = args.dcl_weight
 
         for batch, (
                 colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1, sparse_depth_masks_2,
@@ -308,8 +309,9 @@ if __name__ == '__main__':
                 [scaled_depth_maps_2, scaled_depth_maps_1, boundaries, translations_2_wrt_1, rotations_2_wrt_1,
                  intrinsics])
             depth_consistency_loss = depth_consistency_weight * 0.5 * (depth_consistency_loss_function(
-                [scaled_depth_maps_1, warped_depth_maps_2_to_1, intersect_masks_1]) + depth_consistency_loss_function(
-                [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2]))
+                [scaled_depth_maps_1, warped_depth_maps_2_to_1, intersect_masks_1,
+                 intrinsics]) + depth_consistency_loss_function(
+                [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2, intrinsics]))
             loss = depth_consistency_loss + sparse_flow_loss
 
             if math.isnan(loss.item()) or math.isinf(loss.item()):
@@ -414,9 +416,7 @@ if __name__ == '__main__':
                 scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
                     [torch.abs(predicted_depth_maps_2), sparse_depths_2, sparse_depth_masks_2])
 
-                # Sparse optical flow loss
-                # Optical flow maps calculated using predicted dense depth maps and camera poses
-                # should agree with the sparse optical flows of feature points from SfM
+                # Sparse flow loss
                 flows_from_depth_1 = flow_from_depth_layer(
                     [scaled_depth_maps_1, boundaries, translations_1_wrt_2, rotations_1_wrt_2,
                      intrinsics])
@@ -429,7 +429,7 @@ if __name__ == '__main__':
                 sparse_flows_2 = sparse_flows_2 * boundaries
                 flows_from_depth_1 = flows_from_depth_1 * boundaries
                 flows_from_depth_2 = flows_from_depth_2 * boundaries
-                sparse_flow_loss = 0.5 * (sparse_flow_loss_function(
+                sparse_flow_loss = sparse_flow_weight * 0.5 * (sparse_flow_loss_function(
                     [sparse_flows_1, flows_from_depth_1, sparse_flow_masks_1]) + sparse_flow_loss_function(
                     [sparse_flows_2, flows_from_depth_2, sparse_flow_masks_2]))
 
@@ -440,10 +440,10 @@ if __name__ == '__main__':
                 warped_depth_maps_1_to_2, intersect_masks_2 = depth_warping_layer(
                     [scaled_depth_maps_2, scaled_depth_maps_1, boundaries, translations_2_wrt_1, rotations_2_wrt_1,
                      intrinsics])
-                depth_consistency_loss = 0.5 * (depth_consistency_loss_function(
+                depth_consistency_loss = depth_consistency_weight * 0.5 * (depth_consistency_loss_function(
                     [scaled_depth_maps_1, warped_depth_maps_2_to_1,
-                     intersect_masks_1]) + depth_consistency_loss_function(
-                    [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2]))
+                     intersect_masks_1, intrinsics]) + depth_consistency_loss_function(
+                    [scaled_depth_maps_2, warped_depth_maps_1_to_2, intersect_masks_2, intrinsics]))
 
                 loss = depth_consistency_loss + sparse_flow_loss
                 tq.update(batch_size)

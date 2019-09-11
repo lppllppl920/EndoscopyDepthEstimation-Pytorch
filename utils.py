@@ -36,19 +36,28 @@ def overlapping_visible_view_indexes_per_point(visible_view_indexes_per_point, v
     return visible_view_indexes_per_point
 
 
-def get_color_file_names_by_bag(root, testing_patient_id, id_range, split_ratio=(0.5, 0.5)):
+def get_color_file_names_by_bag(root, validation_patient_id, testing_patient_id, id_range):
     training_image_list = []
-    rest_image_list = []
+    validation_image_list = []
+    testing_image_list = []
+
+    if not isinstance(validation_patient_id, list):
+        validation_patient_id = [validation_patient_id]
+    if not isinstance(testing_patient_id, list):
+        testing_patient_id = [testing_patient_id]
+
     for i in range(id_range[0], id_range[1]):
-        if i != testing_patient_id:
+        if i not in testing_patient_id and i not in validation_patient_id:
             training_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
-        else:
-            rest_image_list = list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
+        elif i in validation_patient_id:
+            validation_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
+        elif i in testing_patient_id:
+            testing_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
 
     training_image_list.sort()
-    rest_image_list.sort()
-    split_point = int(len(rest_image_list) * split_ratio[0])
-    return training_image_list, rest_image_list[:split_point], rest_image_list[split_point:]
+    testing_image_list.sort()
+    validation_image_list.sort()
+    return training_image_list, validation_image_list, testing_image_list
 
 
 def get_color_file_names(root, split_ratio=(0.9, 0.05, 0.05)):
@@ -71,18 +80,13 @@ def get_test_color_img(img_file_name, start_h, end_h, start_w, end_w, downsampli
     return downsampled_img
 
 
-def get_parent_folder_names(root, testing_patient_id, id_range):
-    training_folder_list = []
-    rest_folder_list = []
+def get_parent_folder_names(root, id_range):
+    folder_list = []
     for i in range(id_range[0], id_range[1]):
-        if i != testing_patient_id:
-            training_folder_list += list(root.glob('*' + str(i) + '/_start*/'))
-        else:
-            rest_folder_list = list(root.glob('*' + str(i) + '/_start*/'))
+        folder_list += list(root.glob('*' + str(i) + '/_start*/'))
 
-    training_folder_list.sort()
-    rest_folder_list.sort()
-    return training_folder_list, rest_folder_list
+    folder_list.sort()
+    return folder_list
 
 
 def downsample_and_crop_mask(mask, downsampling_factor, divide, suggested_h=None, suggested_w=None):
@@ -139,6 +143,16 @@ def read_selected_indexes(prefix_seq):
     return stride, selected_indexes
 
 
+def read_visible_image_path_list(data_root):
+    visible_image_path_list = []
+    visible_indexes_path_list = list(data_root.rglob("*visible_view_indexes_filtered"))
+    for index_path in visible_indexes_path_list:
+        with open(str(index_path)) as fp:
+            for line in fp:
+                visible_image_path_list.append(int(line))
+    return visible_image_path_list
+
+
 def read_visible_view_indexes(prefix_seq):
     visible_view_indexes = []
     with open(str(prefix_seq / 'visible_view_indexes_filtered')) as fp:
@@ -189,9 +203,9 @@ def modify_camera_intrinsic_matrix(intrinsic_matrix, start_h, start_w, downsampl
     return intrinsic_matrix_modified
 
 
-def read_point_cloud(prefix_seq):
+def read_point_cloud(path):
     lists_3D_points = []
-    plydata = PlyData.read(str(prefix_seq / "structure_filtered.ply"))
+    plydata = PlyData.read(path)
     for n in range(plydata['vertex'].count):
         temp = list(plydata['vertex'][n])
         temp[0] = temp[0]
@@ -494,11 +508,18 @@ def get_torch_training_data(pair_extrinsics, pair_projections, pair_indexes, poi
 
     point_visibility_1 = np.asarray(view_indexes_per_point[:, visible_view_indexes.index(pair_indexes[0])]).reshape(
         (-1))
-    visible_point_indexes_1 = np.where((point_visibility_1 > 0.5) & (clean_point_list > 0.5))
+    if len(clean_point_list) != 0:
+        visible_point_indexes_1 = np.where((point_visibility_1 > 0.5) & (clean_point_list > 0.5))
+    else:
+        visible_point_indexes_1 = np.where((point_visibility_1 > 0.5))
     visible_point_indexes_1 = visible_point_indexes_1[0]
     point_visibility_2 = np.asarray(view_indexes_per_point[:, visible_view_indexes.index(pair_indexes[1])]).reshape(
         (-1))
-    visible_point_indexes_2 = np.where((point_visibility_2 > 0.5) & (clean_point_list > 0.5))
+
+    if len(clean_point_list) != 0:
+        visible_point_indexes_2 = np.where((point_visibility_2 > 0.5) & (clean_point_list > 0.5))
+    else:
+        visible_point_indexes_2 = np.where((point_visibility_2 > 0.5))
     visible_point_indexes_2 = visible_point_indexes_2[0]
     visible_points_3D_camera_1 = points_3D_camera_1[visible_point_indexes_1, :].reshape((-1, 4))
     visible_points_2D_image_1 = points_2D_image_1[visible_point_indexes_1, :].reshape((-1, 3))
@@ -1389,7 +1410,7 @@ def read_initial_pose_file(file_path):
 def get_filenames_from_frame_indexes(sequence_root, frame_index_array):
     test_image_list = []
     for index in frame_index_array:
-        temp = list(sequence_root.glob('*{:08d}.jpg'.format(index)))
+        temp = list(sequence_root.rglob('{:08d}.jpg'.format(index)))
         if len(temp) != 0:
             test_image_list.append(temp[0])
     test_image_list.sort()

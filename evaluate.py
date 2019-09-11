@@ -45,7 +45,7 @@ if __name__ == '__main__':
     parser.add_argument('--network_downsampling', type=int, default=64, help='downsampling of network')
     parser.add_argument('--inlier_percentage', type=float, default=0.995,
                         help='percentage of inliers of SfM point clouds (for pruning some outliers)')
-    parser.add_argument('--testing_patient_id', type=int, required=True, help='id of the testing patient')
+    parser.add_argument('--testing_patient_id', nargs='+', type=int, help='id of the testing patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
     parser.add_argument('--use_hsv_colorspace', action='store_true',
                         help='convert RGB to hsv colorspace')
@@ -99,11 +99,12 @@ if __name__ == '__main__':
     test_transforms = albu.Compose([
         albu.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), max_pixel_value=255.0, p=1.)], p=1.)
 
-    log_root = Path(evaluation_result_root) / "depth_estimation_run_{}_{}_{}_{}_bag_{}".format(currentDT.month,
-                                                                                               currentDT.day,
-                                                                                               currentDT.hour,
-                                                                                               currentDT.minute,
-                                                                                               testing_patient_id)
+    log_root = Path(evaluation_result_root) / "depth_estimation_evaluation_run_{}_{}_{}_{}_test_id_{}".format(
+        currentDT.month,
+        currentDT.day,
+        currentDT.hour,
+        currentDT.minute,
+        testing_patient_id)
     if not log_root.exists():
         log_root.mkdir(parents=True)
     writer = SummaryWriter(logdir=str(log_root))
@@ -118,14 +119,11 @@ if __name__ == '__main__':
 
     # Get color image filenames
     test_filenames = utils.get_filenames_from_frame_indexes(sequence_root, selected_frame_index_list)
-
-    training_folder_list, val_folder_list = utils.get_parent_folder_names(evaluation_data_root,
-                                                                          testing_patient_id=testing_patient_id,
-                                                                          id_range=id_range)
+    folder_list = utils.get_parent_folder_names(evaluation_data_root, id_range=id_range)
 
     if phase == "validation":
         test_dataset = dataset.SfMDataset(image_file_names=test_filenames,
-                                          folder_list=training_folder_list + val_folder_list,
+                                          folder_list=folder_list,
                                           adjacent_range=adjacent_range, transform=None,
                                           downsampling=input_downsampling,
                                           network_downsampling=network_downsampling,
@@ -133,7 +131,7 @@ if __name__ == '__main__':
                                           use_store_data=load_intermediate_data,
                                           store_data_root=evaluation_data_root,
                                           phase="validation", is_hsv=is_hsv,
-                                          num_pre_workers=num_workers, visible_interval=20, rgb_mode="bgr")
+                                          num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
 
         test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False,
                                                   num_workers=0)
@@ -166,7 +164,6 @@ if __name__ == '__main__':
         depth_warping_layer = models.DepthWarpingLayer()
         flow_from_depth_layer = models.FlowfromDepthLayer()
 
-        interval = int(len(test_loader) // 10)
         with torch.no_grad():
             # Set model to evaluation mode
             depth_estimation_model.eval()
@@ -177,12 +174,6 @@ if __name__ == '__main__':
                     sparse_flows_1, sparse_flows_2, sparse_flow_masks_1, sparse_flow_masks_2, boundaries,
                     rotations_1_wrt_2, rotations_2_wrt_1, translations_1_wrt_2, translations_2_wrt_1, intrinsics,
                     folders) in enumerate(test_loader):
-                if batch % interval != 0:
-                    continue
-
-                if batch > interval * 10:
-                    break
-
                 colors_1 = colors_1.cuda()
                 colors_2 = colors_2.cuda()
                 sparse_depths_1 = sparse_depths_1.cuda()
@@ -218,9 +209,7 @@ if __name__ == '__main__':
                 boundary_array = boundaries[0].squeeze(dim=0).data.cpu().numpy()
                 intrinsic_array = intrinsics[0].data.cpu().numpy()
 
-                # Sparse optical flow loss
-                # Optical flow maps calculated using predicted dense depth maps and camera poses
-                # should agree with the sparse optical flows of feature points from SfM
+                # Sparse flow loss
                 flows_from_depth_1 = flow_from_depth_layer(
                     [scaled_depth_maps_1, boundaries, translations_1_wrt_2, rotations_1_wrt_2,
                      intrinsics])
@@ -290,7 +279,7 @@ if __name__ == '__main__':
 
     elif phase == "test":
         test_dataset = dataset.SfMDataset(image_file_names=test_filenames,
-                                          folder_list=training_folder_list + val_folder_list,
+                                          folder_list=folder_list,
                                           adjacent_range=adjacent_range, transform=None,
                                           downsampling=input_downsampling,
                                           network_downsampling=network_downsampling,
@@ -338,15 +327,17 @@ if __name__ == '__main__':
                 colors_1 = boundaries * colors_1
                 predicted_depth_maps_1 = depth_estimation_model(colors_1)
 
-                color_display = cv2.cvtColor(np.uint8(255 * colors_1[0].data.cpu().numpy().reshape((height, width, 3))),
-                                             cv2.COLOR_HSV2RGB_FULL)
+                color_display = cv2.cvtColor(np.uint8(
+                    255 * (0.5 * colors_1[0].permute(1, 2, 0).data.cpu().numpy() + 0.5).reshape((height, width, 3))),
+                    cv2.COLOR_HSV2BGR_FULL)
                 boundary = boundaries[0].data.cpu().numpy().reshape((height, width))
-
-                depth_map = predicted_depth_maps_1[0].data.cpu().numpy().reshape((height, width))
+                color_display = np.uint8(boundary.reshape((height, width, 1)) * color_display)
+                depth_map = (boundaries * predicted_depth_maps_1)[0].data.cpu().numpy().reshape((height, width))
+                depth_display = cv2.applyColorMap(np.uint8(255 * depth_map / np.max(depth_map)), cv2.COLORMAP_JET)
                 point_cloud = utils.point_cloud_from_depth(depth_map=depth_map, color_img=color_display,
                                                            mask_img=boundary,
-                                                           intrinsic_matrix=intrinsics.data.numpy(),
+                                                           intrinsic_matrix=intrinsics[0].data.numpy(),
                                                            point_cloud_downsampling=1)
                 utils.write_point_cloud(path=log_root / "{}.ply".format(names[0]), point_cloud=point_cloud)
-
+                cv2.imwrite(str(log_root / "{}.png".format(names[0])), cv2.hconcat([color_display, depth_display]))
                 tq.update(batch_size)
