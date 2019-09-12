@@ -110,9 +110,6 @@ if __name__ == '__main__':
     id_range = args.id_range
     currentDT = datetime.datetime.now()
 
-    depth_estimation_model_teacher = []
-    failure_sequences = []
-
     training_transforms = albu.Compose([
         # Color augmentation
         albu.OneOf([

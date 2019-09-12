@@ -52,7 +52,8 @@ def get_color_file_names_by_bag(root, validation_patient_id, testing_patient_id,
         elif i in validation_patient_id:
             validation_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
         elif i in testing_patient_id:
-            testing_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
+            # testing_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
+            testing_image_list += list(root.glob('*' + str(i) + '/_start*872*/0*.jpg'))
 
     training_image_list.sort()
     testing_image_list.sort()

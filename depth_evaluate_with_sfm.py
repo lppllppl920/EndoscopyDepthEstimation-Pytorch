@@ -19,6 +19,7 @@ import random
 from tensorboardX import SummaryWriter
 import argparse
 import datetime
+import imageio
 import scipy.io
 # Local
 import models
@@ -122,20 +123,20 @@ if __name__ == '__main__':
     folder_list = utils.get_parent_folder_names(training_data_root, id_range=id_range)
 
     # Build validation dataset
-    validation_dataset = dataset.SfMDataset(image_file_names=test_filenames,
-                                            folder_list=folder_list,
-                                            adjacent_range=adjacent_range,
-                                            transform=None,
-                                            downsampling=input_downsampling,
-                                            network_downsampling=network_downsampling,
-                                            inlier_percentage=inlier_percentage,
-                                            use_store_data=True,
-                                            store_data_root=training_data_root,
-                                            phase="validation", is_hsv=is_hsv,
-                                            num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
+    test_dataset = dataset.SfMDataset(image_file_names=test_filenames,
+                                      folder_list=folder_list,
+                                      adjacent_range=adjacent_range,
+                                      transform=None,
+                                      downsampling=input_downsampling,
+                                      network_downsampling=network_downsampling,
+                                      inlier_percentage=inlier_percentage,
+                                      use_store_data=True,
+                                      store_data_root=training_data_root,
+                                      phase="validation", is_hsv=is_hsv,
+                                      num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
 
-    validation_loader = torch.utils.data.DataLoader(dataset=validation_dataset, batch_size=batch_size, shuffle=False,
-                                                    num_workers=batch_size)
+    test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False,
+                                              num_workers=batch_size)
 
     depth_estimation_model_ours = models.FCDenseNet57(n_classes=1)
     # Initialize the depth estimation network with Kaiming He initialization
@@ -207,7 +208,7 @@ if __name__ == '__main__':
     mean_loss = 0.0
     mean_depth_consistency_loss = 0.0
     mean_sparse_flow_loss = 0.0
-    tq = tqdm.tqdm(total=len(validation_loader) * batch_size, dynamic_ncols=True, ncols=40)
+    tq = tqdm.tqdm(total=len(test_loader) * batch_size, dynamic_ncols=True, ncols=40)
     tq.set_description('Validation Epoch {}'.format(epoch))
 
     abs_rel_error_list = []
@@ -215,13 +216,21 @@ if __name__ == '__main__':
     sigma_2_list = []
     sigma_3_list = []
 
+    color_list = []
+    depth_ours_list = []
+    depth_sfmlearner_list = []
+    depth_geonet_list = []
+    display_image_list = []
+    max_depth_ours = 0.0
+    max_depth_sfmlearner = 0.0
+    max_depth_geonet = 0.0
     with torch.no_grad():
         for batch, (
                 colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1,
                 sparse_depth_masks_2, sparse_flows_1,
                 sparse_flows_2, sparse_flow_masks_1, sparse_flow_masks_2, boundaries, rotations_1_wrt_2,
                 rotations_2_wrt_1, translations_1_wrt_2, translations_2_wrt_1, intrinsics,
-                folders, filenames) in enumerate(validation_loader):
+                folders, filenames) in enumerate(test_loader):
 
             colors_1 = colors_1.cuda()
             colors_2 = colors_2.cuda()
@@ -273,25 +282,40 @@ if __name__ == '__main__':
             scaled_depth_maps_1_sfmlearner = scaled_depth_maps_1_sfmlearner * boundaries
 
             for i in range(scaled_depth_maps_1.shape[0]):
-                if int(filenames[i]) in selected_frame_index_list:
-                    display_depth = scaled_depth_maps_1[i].view(height, width).data.cpu().numpy()
-                    min_depth = 0.0
-                    max_depth = np.max(display_depth)
+                # if int(filenames[i]) in selected_frame_index_list:
+                display_depth = scaled_depth_maps_1[i].view(height, width).data.cpu().numpy()
+                depth_ours_list.append(display_depth)
 
-                    display_depth = display_depth / max_depth
+                max_depth_ours = np.maximum(np.max(display_depth), max_depth_ours)
+                color_list.append(bgr_colors_list_1[i])
+                # display_color = bgr_colors_list_1[i]
+                # min_depth = 0.0
+                # max_depth = np.max(display_depth)
 
-                    display_depth_geonet = scaled_depth_maps_1_geonet[i].view(height, width).data.cpu().numpy()
-                    display_depth_geonet = np.clip(display_depth_geonet / max_depth, a_min=0.0, a_max=1.0)
-
-                    display_depth_sfmlearner = scaled_depth_maps_1_sfmlearner[i].view(height, width).data.cpu().numpy()
-                    display_depth_sfmlearner = np.clip(display_depth_sfmlearner / max_depth, a_min=0.0, a_max=1.0)
-
-                    cv2.imwrite(str(log_root / (str(int(filenames[i])) + "_ours.png")),
-                                cv2.applyColorMap(np.uint8(255 * display_depth), cv2.COLORMAP_JET))
-                    cv2.imwrite(str(log_root / (str(int(filenames[i])) + "_geonet.png")),
-                                cv2.applyColorMap(np.uint8(255 * display_depth_geonet), cv2.COLORMAP_JET))
-                    cv2.imwrite(str(log_root / (str(int(filenames[i])) + "_sfmlearner.png")),
-                                cv2.applyColorMap(np.uint8(255 * display_depth_sfmlearner), cv2.COLORMAP_JET))
+                # display_depth = display_depth / max_depth
+                # display_depth = cv2.applyColorMap(np.uint8(255 * display_depth), cv2.COLORMAP_JET)
+                #
+                display_depth_geonet = scaled_depth_maps_1_geonet[i].view(height, width).data.cpu().numpy()
+                depth_geonet_list.append(display_depth_geonet)
+                max_depth_geonet = np.maximum(np.max(display_depth_geonet), max_depth_geonet)
+                # display_depth_geonet = np.clip(display_depth_geonet / max_depth, a_min=0.0, a_max=1.0)
+                # display_depth_geonet = cv2.applyColorMap(np.uint8(255 * display_depth_geonet), cv2.COLORMAP_JET)
+                #
+                display_depth_sfmlearner = scaled_depth_maps_1_sfmlearner[i].view(height, width).data.cpu().numpy()
+                depth_sfmlearner_list.append(display_depth_sfmlearner)
+                max_depth_sfmlearner = np.maximum(np.max(display_depth_sfmlearner), max_depth_sfmlearner)
+                # display_depth_sfmlearner = np.clip(display_depth_sfmlearner / max_depth, a_min=0.0, a_max=1.0)
+                # display_depth_sfmlearner = cv2.applyColorMap(np.uint8(255 * display_depth_sfmlearner),
+                #                                              cv2.COLORMAP_JET)
+                # display_image_list.append(cv2.cvtColor(
+                #     cv2.hconcat([display_color, display_depth, display_depth_sfmlearner, display_depth_geonet]),
+                #     cv2.COLOR_BGR2RGB))
+                # cv2.imwrite(str(log_root / (str(int(filenames[i])) + "_ours.png")),
+                #             cv2.applyColorMap(np.uint8(255 * display_depth), cv2.COLORMAP_JET))
+                # cv2.imwrite(str(log_root / (str(int(filenames[i])) + "_geonet.png")),
+                #             cv2.applyColorMap(np.uint8(255 * display_depth_geonet), cv2.COLORMAP_JET))
+                # cv2.imwrite(str(log_root / (str(int(filenames[i])) + "_sfmlearner.png")),
+                #             cv2.applyColorMap(np.uint8(255 * display_depth_sfmlearner), cv2.COLORMAP_JET))
 
             # error = abs_rel_error([scaled_depth_maps_1, sparse_depths_1, sparse_depth_masks_1])
             # threshold_error = threshold([scaled_depth_maps_1, sparse_depths_1, sparse_depth_masks_1])
@@ -329,6 +353,20 @@ if __name__ == '__main__':
             #         mean_sigma_3, np.mean(sigma_3)))
             tq.update(batch_size)
 
+    for i in range(len(depth_ours_list)):
+        display_depth_ours = cv2.applyColorMap(np.uint8(255 * depth_ours_list[i] / max_depth_ours), cv2.COLORMAP_JET)
+        display_depth_sfmlearner = cv2.applyColorMap(
+            np.uint8(255 * np.clip(depth_sfmlearner_list[i] / max_depth_ours, a_min=0.0, a_max=1.0)),
+            cv2.COLORMAP_JET)
+        display_depth_geonet = cv2.applyColorMap(
+            np.uint8(255 * np.clip(depth_geonet_list[i] / max_depth_ours, a_min=0.0, a_max=1.0)),
+            cv2.COLORMAP_JET)
+        display_image_list.append(
+            cv2.cvtColor(
+                cv2.hconcat([color_list[i], display_depth_ours, display_depth_sfmlearner, display_depth_geonet]),
+                cv2.COLOR_BGR2RGB))
+
+    imageio.mimsave(str(log_root / "clip_{}.gif".format(testing_patient_id)), display_image_list)
     # evaluation_dict = {}
     # evaluation_dict["abs_rel_err_patient_" + str(testing_patient_id)] = abs_rel_error_list
     # evaluation_dict["sigma_1_patient_" + str(testing_patient_id)] = sigma_1_list
