@@ -14,7 +14,7 @@ Xingtong Liu, Ayushi Sinha, Mathias Unberath, Masaru Ishii, Gregory D. Hager, Ru
 
 In International Workshop on Computer-Assisted and Robotic Endoscopy 2018 (**Best paper award & Best presentation award**)
 
-This work has been accepted to IEEE Transactions on Medical Imaging.
+This work has been accepted to **IEEE Transactions on Medical Imaging**.
 
 Please contact [**Xingtong Liu**](http://www.cs.jhu.edu/~xingtongl/) (xliu89@jh.edu) if you have any questions.
 
