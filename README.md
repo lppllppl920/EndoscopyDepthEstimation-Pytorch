@@ -18,7 +18,7 @@ This work has been accepted to **IEEE Transactions on Medical Imaging**.
 
 Please contact [**Xingtong Liu**](http://www.cs.jhu.edu/~xingtongl/) (xliu89@jh.edu) if you have any questions.
 
-Please cite [CARE Workshop](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) or [TMI Submission Arxiv Preprint](https://arxiv.org/abs/1902.07766) if you use the code here.
+Please cite [CARE Workshop](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) or [TMI Early Access](https://ieeexplore.ieee.org/abstract/document/8889760) if you use the code here.
 ```
 @incollection{liu2018self,
   title={Self-supervised Learning for Dense Depth Estimation in Monocular Endoscopy},
@@ -30,17 +30,17 @@ Please cite [CARE Workshop](https://link.springer.com/chapter/10.1007/978-3-030-
 }
 ```
 ```
-@ARTICLE{liu2019dense, 
-author={X. {Li} and A. {Sinha} and M. {Ishii} and G. D. {Hager} and A. {Reiter} and R. H. {Taylor} and M. {Unberath}}, 
-journal={IEEE Transactions on Medical Imaging}, 
-title={Dense Depth Estimation in Monocular Endoscopy with Self-supervised Learning Methods}, 
-year={2019}, 
-volume={}, 
-number={}, 
-pages={1-1}, 
-keywords={Estimation;Endoscopes;Cameras;Videos;Training;Image reconstruction;Three-dimensional displays;Endoscopy;unsupervised learning;selfsupervised learning;depth estimation}, 
-doi={10.1109/TMI.2019.2950936}, 
-ISSN={}, 
+@ARTICLE{liu2019dense,
+author={X. {Li} and A. {Sinha} and M. {Ishii} and G. D. {Hager} and A. {Reiter} and R. H. {Taylor} and M. {Unberath}},
+journal={IEEE Transactions on Medical Imaging},
+title={Dense Depth Estimation in Monocular Endoscopy with Self-supervised Learning Methods},
+year={2019},
+volume={},
+number={},
+pages={1-1},
+keywords={Estimation;Endoscopes;Cameras;Videos;Training;Image reconstruction;Three-dimensional displays;Endoscopy;unsupervised learning;selfsupervised learning;depth estimation},
+doi={10.1109/TMI.2019.2950936},
+ISSN={},
 month={},}
 ```
 ## Instructions
