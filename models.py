@@ -385,7 +385,7 @@ def _warp_coordinate_generate(depth_maps_1, img_masks, translation_vectors, rota
 
     # intrinsic_matrix_inverse = intrinsic_matrix.inverse()
     eye = torch.eye(3).float().cuda().view(1, 3, 3).expand(intrinsic_matrices.shape[0], -1, -1)
-    intrinsic_matrices_inverse, _ = torch.gesv(eye, intrinsic_matrices)
+    intrinsic_matrices_inverse, _ = torch.solve(eye, intrinsic_matrices)
 
     rotation_matrices_inverse = rotation_matrices.transpose(1, 2)
 
@@ -486,7 +486,7 @@ def _depth_warping(depth_maps_1, depth_maps_2, img_masks, translation_vectors, r
 
     # intrinsic_matrix_inverse = intrinsic_matrix.inverse()
     eye = torch.eye(3).float().cuda().view(1, 3, 3).expand(intrinsic_matrices.shape[0], -1, -1)
-    intrinsic_matrices_inverse, _ = torch.gesv(eye, intrinsic_matrices)
+    intrinsic_matrices_inverse, _ = torch.solve(eye, intrinsic_matrices)
     rotation_matrices_inverse = rotation_matrices.transpose(1, 2)
 
     # The following is when we have different intrinsic matrices for samples within a batch

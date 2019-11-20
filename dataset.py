@@ -31,6 +31,7 @@ def find_largest_size(folder_list, downsampling, network_downsampling, queue_siz
         _, start_h, end_h, start_w, end_w = \
             utils.downsample_and_crop_mask(undistorted_mask_boundary, downsampling_factor=downsampling,
                                            divide=network_downsampling)
+        print(end_h - start_h, end_w - start_w)
         queue_size.put([end_h - start_h, end_w - start_w])
 
 
@@ -120,7 +121,7 @@ def pre_processing_data(process_id, folder_list, downsampling, network_downsampl
 class SfMDataset(Dataset):
     def __init__(self, image_file_names, folder_list, adjacent_range,
                  transform, downsampling, network_downsampling, inlier_percentage, visible_interval,
-                 use_store_data, store_data_root, phase, is_hsv, num_pre_workers, rgb_mode):
+                 use_store_data, store_data_root, phase, is_hsv, num_pre_workers, rgb_mode, num_iter=None):
         self.rgb_mode = rgb_mode
         self.image_file_names = image_file_names
         self.folder_list = folder_list
@@ -134,7 +135,9 @@ class SfMDataset(Dataset):
         self.network_downsampling = network_downsampling
         self.phase = phase
         self.visible_interval = visible_interval
-        self.num_pre_workers = num_pre_workers
+        self.num_pre_workers = min(len(folder_list), num_pre_workers)
+        self.num_iter = num_iter
+        self.num_sample = len(self.image_file_names)
 
         self.clean_point_list_per_seq = {}
         self.intrinsic_matrix_per_seq = {}
@@ -155,6 +158,7 @@ class SfMDataset(Dataset):
         else:
             precompute_path = store_data_root / ("precompute_" + str(
                 self.downsampling) + "_" + str(self.network_downsampling) + "_" + str(self.inlier_percentage) + ".pkl")
+
         # Save all intermediate results to hard disk for quick access later on
         if not use_store_data or not precompute_path.exists():
             queue_size = Queue()
@@ -172,16 +176,23 @@ class SfMDataset(Dataset):
 
             process_pool = []
 
-            workers = self.num_pre_workers
-            interval = len(self.folder_list) // workers
+            interval = len(self.folder_list) // self.num_pre_workers
 
-            # Go through the entire image list to find the largest required h and w
-            for i in range(workers - 1):
+            if self.num_pre_workers == 1:
                 process_pool.append(Process(target=find_largest_size, args=(
-                    self.folder_list[i * interval: (i + 1) * interval], self.downsampling, self.network_downsampling,
-                    queue_size)))
-            process_pool.append(Process(target=find_largest_size, args=(
-                self.folder_list[(workers - 1) * interval:], self.downsampling, self.network_downsampling, queue_size)))
+                    self.folder_list[:], self.downsampling,
+                    self.network_downsampling, queue_size)))
+            else:
+                # Go through the entire image list to find the largest required h and w
+                for i in range(self.num_pre_workers - 1):
+                    process_pool.append(Process(target=find_largest_size, args=(
+                        self.folder_list[i * interval: (i + 1) * interval], self.downsampling,
+                        self.network_downsampling,
+                        queue_size)))
+                process_pool.append(Process(target=find_largest_size, args=(
+                    self.folder_list[(self.num_pre_workers - 1) * interval:], self.downsampling,
+                    self.network_downsampling, queue_size)))
+
             for t in process_pool:
                 t.start()
 
@@ -198,11 +209,21 @@ class SfMDataset(Dataset):
                             largest_w = w
                     t.join(timeout=1)
 
+            while not queue_size.empty():
+                h, w = queue_size.get()
+                if h > largest_h:
+                    largest_h = h
+                if w > largest_w:
+                    largest_w = w
+
+            if largest_h == 0 or largest_w == 0:
+                print("image size calculation failed.")
+                raise IOError
+
             print("Largest image size is: ", largest_h, largest_w)
             print("Start pre-processing dataset...")
-
             process_pool = []
-            for i in range(workers - 1):
+            for i in range(self.num_pre_workers - 1):
                 process_pool.append(Process(target=pre_processing_data,
                                             args=(i, self.folder_list[i * interval: (i + 1) * interval],
                                                   self.downsampling, self.network_downsampling, self.is_hsv,
@@ -216,7 +237,8 @@ class SfMDataset(Dataset):
                                                   queue_crop_positions,
                                                   queue_estimated_scale)))
             process_pool.append(Process(target=pre_processing_data,
-                                        args=(workers - 1, self.folder_list[(workers - 1) * interval:],
+                                        args=(self.num_pre_workers - 1,
+                                              self.folder_list[(self.num_pre_workers - 1) * interval:],
                                               self.downsampling, self.network_downsampling, self.is_hsv,
                                               self.inlier_percentage, self.visible_interval, largest_h, largest_w,
                                               queue_clean_point_list,
@@ -328,12 +350,15 @@ class SfMDataset(Dataset):
                  self.inlier_percentage, self.estimated_scale_per_seq] = pickle.load(f)
 
     def __len__(self):
-        return len(self.image_file_names)
+        if self.num_iter is None:
+            return len(self.image_file_names)
+        else:
+            return self.num_iter
 
     def __getitem__(self, idx):
         if self.phase == 'train' or self.phase == 'validation':
             while True:
-                img_file_name = self.image_file_names[idx]
+                img_file_name = self.image_file_names[idx % self.num_sample]
                 # Retrieve the folder path
                 folder = str(img_file_name.parent)
                 # Randomly pick one adjacent frame

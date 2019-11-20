@@ -22,7 +22,7 @@ from pathlib import Path
 
 import matplotlib
 
-matplotlib.use('Agg', warn=False, force=True)
+matplotlib.use('agg', warn=False, force=True)
 from matplotlib import pyplot as plt
 
 
@@ -36,23 +36,24 @@ def overlapping_visible_view_indexes_per_point(visible_view_indexes_per_point, v
     return visible_view_indexes_per_point
 
 
-def get_color_file_names_by_bag(root, validation_patient_id, testing_patient_id, id_range):
+def get_color_file_names_by_bag(root, training_patient_id, validation_patient_id, testing_patient_id):
     training_image_list = []
     validation_image_list = []
     testing_image_list = []
 
+    if not isinstance(training_patient_id, list):
+        training_patient_id = [training_patient_id]
     if not isinstance(validation_patient_id, list):
         validation_patient_id = [validation_patient_id]
     if not isinstance(testing_patient_id, list):
         testing_patient_id = [testing_patient_id]
 
-    for i in range(id_range[0], id_range[1]):
-        if i not in testing_patient_id and i not in validation_patient_id:
-            training_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
-        elif i in validation_patient_id:
-            validation_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
-        elif i in testing_patient_id:
-            testing_image_list += list(root.glob('*' + str(i) + '/_start*/0*.jpg'))
+    for id in training_patient_id:
+        training_image_list += list(root.glob('*' + str(id) + '/_start*/0*.jpg'))
+    for id in testing_patient_id:
+        testing_image_list += list(root.glob('*' + str(id) + '/_start*/0*.jpg'))
+    for id in validation_patient_id:
+        validation_image_list += list(root.glob('*' + str(id) + '/_start*/0*.jpg'))
 
     training_image_list.sort()
     testing_image_list.sort()
@@ -458,7 +459,7 @@ def get_pair_color_imgs(prefix_seq, pair_indexes, start_h, end_h, start_w, end_w
                 downsampled_img = cv2.cvtColor(downsampled_img, cv2.COLOR_BGR2RGB)
         imgs.append(downsampled_img)
     height, width, channel = imgs[0].shape
-    imgs = np.asarray(imgs, dtype=np.float32)
+    imgs = np.asarray(imgs, dtype=np.uint8)
     imgs = imgs.reshape((-1, height, width, channel))
     return imgs
 

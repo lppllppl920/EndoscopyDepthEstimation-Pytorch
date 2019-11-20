@@ -33,35 +33,41 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset -- Student Training',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--adjacent_range', nargs='+', type=int, help='interval range for a pair of video frames')
-    parser.add_argument('--id_range', nargs='+', type=int, help='id range for the training and testing dataset')
+    parser.add_argument('--adjacent_range', nargs='+', type=int, required=True,
+                        help='interval range for a pair of video frames')
+    parser.add_argument('--id_range', nargs='+', type=int, required=True,
+                        help='id range for the training and testing dataset')
     parser.add_argument('--input_downsampling', type=float, default=4.0,
                         help='image downsampling rate to speed up training and reduce overfitting')
-    parser.add_argument('--torchsummary_input_size', nargs='+', type=int, default=None,
-                        help='input size for torchsummary (analysis purpose only)')
+    parser.add_argument('--input_size', nargs='+', type=int, required=True, help='resolution of network input')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size for training and testing')
     parser.add_argument('--num_workers', type=int, default=8, help='number of workers for input data loader')
-    parser.add_argument('--dcl_weight', type=float, default=1.0, help='weight for depth consistency loss')
-    parser.add_argument('--sfl_weight', type=float, default=100.0, help='weight for sparse flow loss')
+    parser.add_argument('--num_pre_workers', type=int, default=8,
+                        help='number of workers for preprocessing intermediate data')
+    parser.add_argument('--dcl_weight', type=float, default=5.0,
+                        help='weight for depth consistency loss in the later training stage')
+    parser.add_argument('--sfl_weight', type=float, default=20.0, help='weight for sparse flow loss')
     parser.add_argument('--max_lr', type=float, default=1.0e-3, help='upper bound learning rate for cyclic lr')
     parser.add_argument('--min_lr', type=float, default=1.0e-4, help='lower bound learning rate for cyclic lr')
     parser.add_argument('--num_iter', type=int, default=1000, help='number of iterations per epoch')
-    parser.add_argument('--network_downsampling', type=int, default=64, help='network downsampling of model')
+    parser.add_argument('--network_downsampling', type=int, default=64, help='network downsampling of the input image')
     parser.add_argument('--inlier_percentage', type=float, default=0.99,
                         help='percentage of inliers of SfM point clouds (for pruning some outliers)')
     parser.add_argument('--validation_interval', type=int, default=1, help='epoch interval for validation')
     parser.add_argument('--zero_division_epsilon', type=float, default=1.0e-8, help='epsilon to prevent zero division')
     parser.add_argument('--display_interval', type=int, default=10, help='iteration interval for image display')
-    parser.add_argument('--testing_patient_id', nargs='+', type=int, help='id of the testing patient')
-    parser.add_argument('--validation_patient_id', nargs='+', type=int, help='id of the valiadtion patient')
+    parser.add_argument('--training_patient_id', nargs='+', type=int, required=True, help='id of the training patient')
+    parser.add_argument('--testing_patient_id', nargs='+', type=int, required=True, help='id of the testing patient')
+    parser.add_argument('--validation_patient_id', nargs='+', type=int, required=True,
+                        help='id of the valiadtion patient')
     parser.add_argument('--load_intermediate_data', action='store_true', help='whether to load intermediate data')
     parser.add_argument('--load_trained_model', action='store_true',
                         help='whether to load trained student model')
-    parser.add_argument('--number_epoch', type=int, help='number of epochs in total')
+    parser.add_argument('--number_epoch', type=int, required=True, help='number of epochs in total')
     parser.add_argument('--use_hsv_colorspace', action='store_true',
                         help='convert RGB to hsv colorspace')
-    parser.add_argument('--training_result_root', type=str, help='root of the training input and ouput')
-    parser.add_argument('--training_data_root', type=str, help='path to the training data')
+    parser.add_argument('--training_result_root', type=str, required=True, help='root of the training input and ouput')
+    parser.add_argument('--training_data_root', type=str, required=True, help='path to the training data')
     parser.add_argument('--architecture_summary', action='store_true', help='display the network architecture')
     parser.add_argument('--trained_model_path', type=str, default=None,
                         help='path to the trained student model')
@@ -78,13 +84,10 @@ if __name__ == '__main__':
     # Hyper-parameters
     adjacent_range = args.adjacent_range
     input_downsampling = args.input_downsampling
-    if args.torchsummary_input_size is not None and len(args.torchsummary_input_size) == 2:
-        height, width = args.torchsummary_input_size
-    else:
-        height = 256
-        width = 320
+    height, width = args.input_size
     batch_size = args.batch_size
     num_workers = args.num_workers
+    num_pre_workers = args.num_pre_workers
     depth_consistency_weight = args.dcl_weight
     sparse_flow_weight = args.sfl_weight
     max_lr = args.max_lr
@@ -97,6 +100,7 @@ if __name__ == '__main__':
     depth_warping_epsilon = args.zero_division_epsilon
     wsl_epsilon = args.zero_division_epsilon
     display_each = args.display_interval
+    training_patient_id = args.training_patient_id
     testing_patient_id = args.testing_patient_id
     validation_patient_id = args.validation_patient_id
     load_intermediate_data = args.load_intermediate_data
@@ -149,11 +153,10 @@ if __name__ == '__main__':
 
     # Get color image filenames
     train_filenames, val_filenames, test_filenames = utils.get_color_file_names_by_bag(training_data_root,
+                                                                                       training_patient_id=training_patient_id,
                                                                                        validation_patient_id=validation_patient_id,
-                                                                                       testing_patient_id=testing_patient_id,
-                                                                                       id_range=id_range)
-    folder_list = utils.get_parent_folder_names(training_data_root,
-                                                id_range=id_range)
+                                                                                       testing_patient_id=testing_patient_id)
+    folder_list = utils.get_parent_folder_names(training_data_root, id_range=id_range)
 
     # Build training and validation dataset
     train_dataset = dataset.SfMDataset(image_file_names=train_filenames,
@@ -164,7 +167,8 @@ if __name__ == '__main__':
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
                                        phase="train", is_hsv=is_hsv,
-                                       num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
+                                       num_pre_workers=num_pre_workers, visible_interval=30,
+                                       rgb_mode="rgb", num_iter=num_iter)
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
                                             folder_list=folder_list,
                                             adjacent_range=adjacent_range,
@@ -175,7 +179,8 @@ if __name__ == '__main__':
                                             use_store_data=True,
                                             store_data_root=training_data_root,
                                             phase="validation", is_hsv=is_hsv,
-                                            num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
+                                            num_pre_workers=num_pre_workers, visible_interval=30,
+                                            rgb_mode="rgb", num_iter=None)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
                                                num_workers=num_workers)
@@ -242,11 +247,9 @@ if __name__ == '__main__':
         for batch, (
                 colors_1, colors_2, sparse_depths_1, sparse_depths_2, sparse_depth_masks_1, sparse_depth_masks_2,
                 sparse_flows_1, sparse_flows_2, sparse_flow_masks_1, sparse_flow_masks_2, boundaries, rotations_1_wrt_2,
-                rotations_2_wrt_1, translations_1_wrt_2, translations_2_wrt_1, intrinsics, folders) in \
+                rotations_2_wrt_1, translations_1_wrt_2, translations_2_wrt_1, intrinsics, folders, file_names) in \
                 enumerate(train_loader):
 
-            if batch > num_iter:
-                break
             # Update learning rate
             lr_scheduler.batch_step(batch_iteration=step)
             tq.set_description('Epoch {}, lr {}'.format(epoch, lr_scheduler.get_lr()))
@@ -386,7 +389,7 @@ if __name__ == '__main__':
                     sparse_depth_masks_2, sparse_flows_1,
                     sparse_flows_2, sparse_flow_masks_1, sparse_flow_masks_2, boundaries, rotations_1_wrt_2,
                     rotations_2_wrt_1, translations_1_wrt_2, translations_2_wrt_1, intrinsics,
-                    folders) in enumerate(validation_loader):
+                    folders, file_names) in enumerate(validation_loader):
 
                 colors_1 = colors_1.cuda()
                 colors_2 = colors_2.cuda()
