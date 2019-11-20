@@ -33,7 +33,7 @@ class DenseBlock(nn.Module):
         super(DenseBlock, self).__init__()
         self.upsample = upsample
         self.layers = nn.ModuleList([DenseLayer(
-            in_channels + i*growth_rate, growth_rate)
+            in_channels + i * growth_rate, growth_rate)
             for i in range(n_layers)])
 
     def forward(self, x):
@@ -71,7 +71,7 @@ class TransitionUp(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(TransitionUp, self).__init__()
         self.convTrans = nn.Sequential(nn.Upsample(mode='nearest', scale_factor=2),
-                                nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
+                                       nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
 
     def forward(self, x, skip):
         out = self.convTrans(x)
@@ -109,8 +109,8 @@ class FCDenseNet(nn.Module):
 
         # First Convolution
         self.add_module('firstconv', nn.Conv2d(in_channels=in_channels,
-                  out_channels=out_chans_first_conv, kernel_size=3,
-                  stride=1, padding=1, bias=True))
+                                               out_channels=out_chans_first_conv, kernel_size=3,
+                                               stride=1, padding=1, bias=True))
         cur_channels_count = out_chans_first_conv
 
         #####################
@@ -122,7 +122,7 @@ class FCDenseNet(nn.Module):
         for i in range(len(down_blocks)):
             self.denseBlocksDown.append(
                 DenseBlock(cur_channels_count, growth_rate, down_blocks[i]))
-            cur_channels_count += (growth_rate*down_blocks[i])
+            cur_channels_count += (growth_rate * down_blocks[i])
             skip_connection_channel_counts.insert(0, cur_channels_count)
             self.transDownBlocks.append(TransitionDown(cur_channels_count))
 
@@ -131,8 +131,8 @@ class FCDenseNet(nn.Module):
         #####################
 
         self.add_module('bottleneck', Bottleneck(cur_channels_count,
-                                     growth_rate, bottleneck_layers))
-        prev_block_channels = growth_rate*bottleneck_layers
+                                                 growth_rate, bottleneck_layers))
+        prev_block_channels = growth_rate * bottleneck_layers
         cur_channels_count += prev_block_channels
 
         #######################
@@ -141,14 +141,14 @@ class FCDenseNet(nn.Module):
 
         self.transUpBlocks = nn.ModuleList([])
         self.denseBlocksUp = nn.ModuleList([])
-        for i in range(len(up_blocks)-1):
+        for i in range(len(up_blocks) - 1):
             self.transUpBlocks.append(TransitionUp(prev_block_channels, prev_block_channels))
             cur_channels_count = prev_block_channels + skip_connection_channel_counts[i]
 
             self.denseBlocksUp.append(DenseBlock(
                 cur_channels_count, growth_rate, up_blocks[i],
-                    upsample=True))
-            prev_block_channels = growth_rate*up_blocks[i]
+                upsample=True))
+            prev_block_channels = growth_rate * up_blocks[i]
             cur_channels_count += prev_block_channels
 
         # Final DenseBlock
@@ -159,14 +159,14 @@ class FCDenseNet(nn.Module):
 
         self.denseBlocksUp.append(DenseBlock(
             cur_channels_count, growth_rate, up_blocks[-1],
-                upsample=False))
-        cur_channels_count += growth_rate*up_blocks[-1]
+            upsample=False))
+        cur_channels_count += growth_rate * up_blocks[-1]
 
         # Softmax
 
         self.finalConv = nn.Conv2d(in_channels=cur_channels_count,
-               out_channels=n_classes, kernel_size=1, stride=1,
-                   padding=0, bias=True)
+                                   out_channels=n_classes, kernel_size=1, stride=1,
+                                   padding=0, bias=True)
 
     def forward(self, x):
         out = self.firstconv(x)
@@ -183,7 +183,7 @@ class FCDenseNet(nn.Module):
             out = self.transUpBlocks[i](out, skip)
             out = self.denseBlocksUp[i](out)
 
-        out = self.finalConv(out)
+        out = torch.abs(self.finalConv(out))
         return out
 
 
@@ -347,14 +347,17 @@ class DepthScalingLayer(nn.Module):
         # Use sparse depth values which are greater than a certain ratio of the mean value of the sparse depths to avoid
         # unstability of scale recovery
         input_sparse_binary_masks = torch.where(input_weighted_sparse_masks > 1.0e-8, self.one, self.zero)
-        mean_sparse_depths = torch.sum(input_sparse_depths * input_sparse_binary_masks, dim=(1, 2, 3), keepdim=True) / torch.sum(input_sparse_binary_masks, dim=(1, 2, 3), keepdim=True)
+        mean_sparse_depths = torch.sum(input_sparse_depths * input_sparse_binary_masks, dim=(1, 2, 3),
+                                       keepdim=True) / torch.sum(input_sparse_binary_masks, dim=(1, 2, 3), keepdim=True)
         above_mean_masks = torch.where(input_sparse_depths > 0.5 * mean_sparse_depths, self.one, self.zero)
 
         # Introduce a criteria to reduce the variation of scale maps
         sparse_scale_maps = input_sparse_depths * above_mean_masks / (self.epsilon + absolute_depth_estimations)
-        mean_scales = torch.sum(sparse_scale_maps, dim=(1, 2, 3), keepdim=True) / torch.sum(above_mean_masks, dim=(1, 2, 3), keepdim=True)
+        mean_scales = torch.sum(sparse_scale_maps, dim=(1, 2, 3), keepdim=True) / torch.sum(above_mean_masks,
+                                                                                            dim=(1, 2, 3), keepdim=True)
         centered_sparse_scale_maps = sparse_scale_maps - above_mean_masks * mean_scales
-        scale_stds = torch.sqrt(torch.sum(centered_sparse_scale_maps * centered_sparse_scale_maps, dim=(1, 2, 3), keepdim=False) / torch.sum(above_mean_masks, dim=(1, 2, 3), keepdim=False))
+        scale_stds = torch.sqrt(torch.sum(centered_sparse_scale_maps * centered_sparse_scale_maps, dim=(1, 2, 3),
+                                          keepdim=False) / torch.sum(above_mean_masks, dim=(1, 2, 3), keepdim=False))
         scales = torch.sum(sparse_scale_maps, dim=(1, 2, 3)) / torch.sum(above_mean_masks, dim=(1, 2, 3))
         return torch.mul(scales.view(-1, 1, 1, 1), absolute_depth_estimations), torch.mean(scale_stds / mean_scales)
 
@@ -366,7 +369,7 @@ class FlowfromDepthLayer(torch.nn.Module):
     def forward(self, x):
         depth_maps_1, img_masks, translation_vectors, rotation_matrices, intrinsic_matrices = x
         flow_image = _flow_from_depth(depth_maps_1, img_masks, translation_vectors, rotation_matrices,
-                                              intrinsic_matrices)
+                                      intrinsic_matrices)
         return flow_image
 
 
@@ -542,8 +545,7 @@ def _depth_warping(depth_maps_1, depth_maps_2, img_masks, translation_vectors, r
                                                                                                  width)
     # binarize
     intersect_masks = torch.where(_bilinear_interpolate(img_masks, u_2_flat, v_2_flat) * img_masks >= 0.9,
-                               torch.tensor(1.0).float().cuda(),
-                               torch.tensor(0.0).float().cuda()).view(num_batch, 1, height, width)
+                                  torch.tensor(1.0).float().cuda(),
+                                  torch.tensor(0.0).float().cuda()).view(num_batch, 1, height, width)
 
     return [warped_depth_maps_2, intersect_masks]
-
