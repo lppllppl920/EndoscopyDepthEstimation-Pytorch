@@ -239,6 +239,8 @@ if __name__ == '__main__':
                                                                                                      phase="Evaluation",
                                                                                                      is_return_image=True,
                                                                                                      color_reverse=True,
+                                                                                                     is_hsv=is_hsv,
+                                                                                                     rgb_mode="rgb",
                                                                                                      boundaries=boundaries
                                                                                                      )
                 colors_2_display, sparse_depths_2_display, pred_depths_2_display, warped_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
@@ -253,6 +255,8 @@ if __name__ == '__main__':
                                                                                                      phase="Evaluation",
                                                                                                      is_return_image=True,
                                                                                                      color_reverse=True,
+                                                                                                     is_hsv=is_hsv,
+                                                                                                     rgb_mode="rgb",
                                                                                                      boundaries=boundaries
                                                                                                      )
                 image_display = utils.stack_and_display(phase="Evaluation",
@@ -287,7 +291,7 @@ if __name__ == '__main__':
                                           use_store_data=load_intermediate_data,
                                           store_data_root=evaluation_data_root,
                                           phase="test", is_hsv=is_hsv,
-                                          num_pre_workers=num_workers, visible_interval=20, rgb_mode="bgr")
+                                          num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
 
         test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1, shuffle=False,
                                                   num_workers=0)
@@ -327,9 +331,13 @@ if __name__ == '__main__':
                 colors_1 = boundaries * colors_1
                 predicted_depth_maps_1 = depth_estimation_model(colors_1)
 
-                color_display = cv2.cvtColor(np.uint8(
-                    255 * (0.5 * colors_1[0].permute(1, 2, 0).data.cpu().numpy() + 0.5).reshape((height, width, 3))),
-                    cv2.COLOR_HSV2BGR_FULL)
+                color_display = np.uint8(
+                    255 * (0.5 * colors_1[0].permute(1, 2, 0).data.cpu().numpy() + 0.5).reshape((height, width, 3)))
+                if is_hsv:
+                    color_display = cv2.cvtColor(color_display, cv2.COLOR_HSV2BGR_FULL)
+                else:
+                    color_display = cv2.cvtColor(color_display, cv2.COLOR_RGB2BGR)
+
                 boundary = boundaries[0].data.cpu().numpy().reshape((height, width))
                 color_display = np.uint8(boundary.reshape((height, width, 1)) * color_display)
                 depth_map = (boundaries * predicted_depth_maps_1)[0].data.cpu().numpy().reshape((height, width))

@@ -836,9 +836,9 @@ def point_cloud_from_depth(depth_map, color_img, mask_img, intrinsic_matrix, poi
                 z = depth_map[h, w]
                 x = (w - c_x) / f_x * z
                 y = (h - c_y) / f_y * z
-                r = color_img[h, w, 2]
-                g = color_img[h, w, 1]
                 b = color_img[h, w, 0]
+                g = color_img[h, w, 1]
+                r = color_img[h, w, 2]
                 if max_threshold is not None and min_threshold is not None:
                     if np.max([r, g, b]) >= max_threshold and np.min([r, g, b]) <= min_threshold:
                         point_clouds.append((x, y, z, np.uint8(r), np.uint8(g), np.uint8(b)))
@@ -961,13 +961,14 @@ def display_color_sparse_depth_dense_depth_warped_depth_sparse_flow_dense_flow(i
 
 
 def display_color_depth_sparse_flow_dense_flow(idx, step, writer, colors_1, pred_depths_1,
-                                               sparse_flows_1, flows_from_depth_1,
-                                               phase="Training", is_return_image=False, color_reverse=True,
+                                               sparse_flows_1, flows_from_depth_1, is_hsv,
+                                               phase="Training", is_return_image=False, color_reverse=True
                                                ):
     colors_display = vutils.make_grid(colors_1 * 0.5 + 0.5, normalize=False)
     colors_display = np.moveaxis(colors_display.data.cpu().numpy(),
                                  source=[0, 1, 2], destination=[2, 0, 1])
-    colors_display = cv2.cvtColor(colors_display, cv2.COLOR_HSV2RGB_FULL)
+    if is_hsv:
+        colors_display = cv2.cvtColor(colors_display, cv2.COLOR_HSV2RGB_FULL)
 
     pred_depths_display = vutils.make_grid(pred_depths_1, normalize=True, scale_each=True)
     pred_depths_display = cv2.applyColorMap(np.uint8(255 * np.moveaxis(pred_depths_display.data.cpu().numpy(),

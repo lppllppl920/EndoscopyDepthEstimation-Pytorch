@@ -357,13 +357,13 @@ if __name__ == '__main__':
                 colors_1_display, pred_depths_1_display, sparse_flows_1_display, dense_flows_1_display = \
                     utils.display_color_depth_sparse_flow_dense_flow(1, step, writer, colors_1,
                                                                      scaled_depth_maps_1 * boundaries,
-                                                                     sparse_flows_1, flows_from_depth_1,
+                                                                     sparse_flows_1, flows_from_depth_1, is_hsv,
                                                                      phase="Training", is_return_image=True,
                                                                      color_reverse=True)
                 colors_2_display, pred_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
                     utils.display_color_depth_sparse_flow_dense_flow(2, step, writer, colors_2,
                                                                      scaled_depth_maps_2 * boundaries,
-                                                                     sparse_flows_2, flows_from_depth_2,
+                                                                     sparse_flows_2, flows_from_depth_2, is_hsv,
                                                                      phase="Training", is_return_image=True,
                                                                      color_reverse=True)
                 utils.stack_and_display(phase="Training", title="Results (c1, d1, sf1, df1, c2, d2, sf2, df2)",
@@ -467,13 +467,13 @@ if __name__ == '__main__':
                     colors_1_display, pred_depths_1_display, sparse_flows_1_display, dense_flows_1_display = \
                         utils.display_color_depth_sparse_flow_dense_flow(1, step, writer, colors_1,
                                                                          scaled_depth_maps_1 * boundaries,
-                                                                         sparse_flows_1, flows_from_depth_1,
+                                                                         sparse_flows_1, flows_from_depth_1, is_hsv,
                                                                          phase="Validation", is_return_image=True,
                                                                          color_reverse=True)
                     colors_2_display, pred_depths_2_display, sparse_flows_2_display, dense_flows_2_display = \
                         utils.display_color_depth_sparse_flow_dense_flow(2, step, writer, colors_2,
                                                                          scaled_depth_maps_2 * boundaries,
-                                                                         sparse_flows_2, flows_from_depth_2,
+                                                                         sparse_flows_2, flows_from_depth_2, is_hsv,
                                                                          phase="Validation", is_return_image=True,
                                                                          color_reverse=True)
                     utils.stack_and_display(phase="Validation", title="Results (c1, d1, sf1, df1, c2, d2, sf2, df2)",
