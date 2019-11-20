@@ -146,7 +146,7 @@ def read_selected_indexes(prefix_seq):
 
 def read_visible_image_path_list(data_root):
     visible_image_path_list = []
-    visible_indexes_path_list = list(data_root.rglob("*visible_view_indexes_filtered"))
+    visible_indexes_path_list = list(data_root.rglob("*visible_view_indexes"))
     for index_path in visible_indexes_path_list:
         with open(str(index_path)) as fp:
             for line in fp:
@@ -156,18 +156,9 @@ def read_visible_image_path_list(data_root):
 
 def read_visible_view_indexes(prefix_seq):
     visible_view_indexes = []
-    with open(str(prefix_seq / 'visible_view_indexes_filtered')) as fp:
-        for line in fp:
-            visible_view_indexes.append(int(line))
-
-    visible_view_indexes_old = []
     with open(str(prefix_seq / 'visible_view_indexes')) as fp:
         for line in fp:
-            visible_view_indexes_old.append(int(line))
-
-    if len(visible_view_indexes) != len(visible_view_indexes_old):
-        print("We didn't handle visible view indexes change in the point cloud filtering algorithm")
-        raise NotImplementedError
+            visible_view_indexes.append(int(line))
 
     return visible_view_indexes
 
@@ -221,7 +212,7 @@ def read_view_indexes_per_point(prefix_seq, visible_view_indexes, point_cloud_co
     # Read the view indexes per point into a 2-dimension binary matrix
     view_indexes_per_point = np.zeros((point_cloud_count, len(visible_view_indexes)))
     point_count = -1
-    with open(str(prefix_seq / 'view_indexes_per_point_filtered')) as fp:
+    with open(str(prefix_seq / 'view_indexes_per_point')) as fp:
         for line in fp:
             if int(line) < 0:
                 point_count = point_count + 1

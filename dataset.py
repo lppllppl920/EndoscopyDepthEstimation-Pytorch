@@ -69,10 +69,7 @@ def pre_processing_data(process_id, folder_list, downsampling, network_downsampl
             start_w=start_w, downsampling_factor=downsampling)
         queue_intrinsic_matrix.put([folder_str, cropped_downsampled_undistorted_intrinsic_matrix])
         # Read sparse point cloud from SfM
-        if inlier_percentage == 1:
-            point_cloud = utils.read_point_cloud(str(folder / "structure.ply"))
-        else:
-            point_cloud = utils.read_point_cloud(str(folder / "structure_filtered.ply"))
+        point_cloud = utils.read_point_cloud(str(folder / "structure.ply"))
         queue_point_cloud.put([folder_str, point_cloud])
         # self.point_cloud_per_seq[folder] = point_cloud
         # Read visible view indexes per point
