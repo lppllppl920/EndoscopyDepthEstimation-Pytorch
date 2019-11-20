@@ -1,4 +1,4 @@
-# Self-Supervised Depth Estimation in Pytorch
+# Self-supervised Depth Estimation in Pytorch
 
 
 ![](clip_1.gif) ![](clip_2.gif)
