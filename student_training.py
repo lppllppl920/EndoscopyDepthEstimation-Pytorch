@@ -21,6 +21,7 @@ from tensorboardX import SummaryWriter
 import albumentations as albu
 import argparse
 import datetime
+import multiprocessing
 # Local
 import models
 import losses
@@ -29,6 +30,7 @@ import dataset
 import scheduler
 
 if __name__ == '__main__':
+    multiprocessing.set_start_method('spawn', force=True)
     cv2.destroyAllWindows()
     parser = argparse.ArgumentParser(
         description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset -- Student Training',
