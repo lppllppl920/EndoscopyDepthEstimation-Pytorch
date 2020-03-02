@@ -61,6 +61,18 @@ month={},}
 /path/to/python /path/to/evaluate.py --id_range 1 2 --input_downsampling 4.0 --network_downsampling 64 --adjacent_range 5 30 --input_size 256 320 --batch_size 8 --num_workers 8 --num_pre_workers 8 --load_all_frames --inlier_percentage 0.99 --visibility_overlap 30 --testing_patient_id 1 --load_intermediate_data --architecture_summary --trained_model_path "/path/to/trained/model" --sequence_root "/path/to/sequence/path" --evaluation_result_root "/path/to/testing/result" --evaluation_data_root "/path/to/testing/data" --phase "test"
 ```
 
+5. The SfM method is implemented based on the work below. However, any standard SfM methods should also work reasonably well, such as [COLMAP](https://colmap.github.io/), and the SfM results need to be reformatted to be correctly loaded for network training. 
+```
+@inproceedings{leonard2016image,
+  title={Image-based navigation for functional endoscopic sinus surgery using structure from motion},
+  author={Leonard, Simon and Reiter, Austin and Sinha, Ayushi and Ishii, Masaru and Taylor, Russell H and Hager, Gregory D},
+  booktitle={Medical Imaging 2016: Image Processing},
+  volume={9784},
+  pages={97840V},
+  year={2016},
+  organization={International Society for Optics and Photonics}
+}
+```
 
 ## Disclaimer
 
