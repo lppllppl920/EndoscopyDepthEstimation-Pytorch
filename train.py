@@ -8,7 +8,6 @@ terms of the GNU GENERAL PUBLIC LICENSE Version 3 license for non-commercial usa
 You should have received a copy of the GNU GENERAL PUBLIC LICENSE Version 3 license with
 this file. If not, please write to: xliu89@jh.edu or rht@jhu.edu or unberath@jhu.edu
 '''
-
 import tqdm
 import cv2
 import numpy as np
@@ -31,14 +30,14 @@ import scheduler
 if __name__ == '__main__':
     cv2.destroyAllWindows()
     parser = argparse.ArgumentParser(
-        description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset -- Student Training',
+        description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset -- Train',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--adjacent_range', nargs='+', type=int, required=True,
                         help='interval range for a pair of video frames')
     parser.add_argument('--id_range', nargs='+', type=int, required=True,
                         help='id range for the training and testing dataset')
     parser.add_argument('--input_downsampling', type=float, default=4.0,
-                        help='image downsampling rate to speed up training and reduce overfitting')
+                        help='image downsampling rate')
     parser.add_argument('--input_size', nargs='+', type=int, required=True, help='resolution of network input')
     parser.add_argument('--batch_size', type=int, default=8, help='batch size for training and testing')
     parser.add_argument('--num_workers', type=int, default=8, help='number of workers for input data loader')
@@ -64,6 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('--load_trained_model', action='store_true',
                         help='whether to load trained student model')
     parser.add_argument('--number_epoch', type=int, required=True, help='number of epochs in total')
+    parser.add_argument('--visibility_overlap', type=int, default=30, help='overlap of point visibility information')
     parser.add_argument('--use_hsv_colorspace', action='store_true',
                         help='convert RGB to hsv colorspace')
     parser.add_argument('--training_result_root', type=str, required=True, help='root of the training input and ouput')
@@ -112,6 +112,7 @@ if __name__ == '__main__':
     trained_model_path = args.trained_model_path
     training_data_root = Path(args.training_data_root)
     id_range = args.id_range
+    visibility_overlap = args.visibility_overlap
     currentDT = datetime.datetime.now()
 
     depth_estimation_model_teacher = []
@@ -140,12 +141,12 @@ if __name__ == '__main__':
         ]),
     ], p=1.)
 
-    log_root = Path(training_result_root) / "depth_estimation_training_run_{}_{}_{}_{}_test_id_{}".format(
+    log_root = Path(training_result_root) / "depth_estimation_train_run_{}_{}_{}_{}_test_id_{}".format(
         currentDT.month,
         currentDT.day,
         currentDT.hour,
         currentDT.minute,
-        testing_patient_id)
+        "_".join(testing_patient_id))
     if not log_root.exists():
         log_root.mkdir()
     writer = SummaryWriter(logdir=str(log_root))
@@ -167,7 +168,7 @@ if __name__ == '__main__':
                                        use_store_data=load_intermediate_data,
                                        store_data_root=training_data_root,
                                        phase="train", is_hsv=is_hsv,
-                                       num_pre_workers=num_pre_workers, visible_interval=30,
+                                       num_pre_workers=num_pre_workers, visible_interval=visibility_overlap,
                                        rgb_mode="rgb", num_iter=num_iter)
     validation_dataset = dataset.SfMDataset(image_file_names=val_filenames,
                                             folder_list=folder_list,
@@ -179,7 +180,7 @@ if __name__ == '__main__':
                                             use_store_data=True,
                                             store_data_root=training_data_root,
                                             phase="validation", is_hsv=is_hsv,
-                                            num_pre_workers=num_pre_workers, visible_interval=30,
+                                            num_pre_workers=num_pre_workers, visible_interval=visibility_overlap,
                                             rgb_mode="rgb", num_iter=None)
 
     train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=batch_size, shuffle=True,
@@ -187,18 +188,18 @@ if __name__ == '__main__':
     validation_loader = torch.utils.data.DataLoader(dataset=validation_dataset, batch_size=batch_size, shuffle=False,
                                                     num_workers=batch_size)
 
-    depth_estimation_model_student = models.FCDenseNet57(n_classes=1)
+    depth_estimation_model = models.FCDenseNet57(n_classes=1)
     # Initialize the depth estimation network with Kaiming He initialization
-    depth_estimation_model_student = utils.init_net(depth_estimation_model_student, type="kaiming", mode="fan_in",
-                                                    activation_mode="relu",
-                                                    distribution="normal")
+    depth_estimation_model = utils.init_net(depth_estimation_model, type="kaiming", mode="fan_in",
+                                            activation_mode="relu",
+                                            distribution="normal")
     # Multi-GPU running
-    depth_estimation_model_student = torch.nn.DataParallel(depth_estimation_model_student)
+    depth_estimation_model = torch.nn.DataParallel(depth_estimation_model)
     # Summary network architecture
     if display_architecture:
-        torchsummary.summary(depth_estimation_model_student, input_size=(3, height, width))
+        torchsummary.summary(depth_estimation_model, input_size=(3, height, width))
     # Optimizer
-    optimizer = torch.optim.SGD(depth_estimation_model_student.parameters(), lr=max_lr, momentum=0.9)
+    optimizer = torch.optim.SGD(depth_estimation_model.parameters(), lr=max_lr, momentum=0.9)
     lr_scheduler = scheduler.CyclicLR(optimizer, base_lr=min_lr, max_lr=max_lr, step_size=num_iter)
 
     # Custom layers
@@ -216,10 +217,10 @@ if __name__ == '__main__':
             state = torch.load(trained_model_path)
             step = state['step']
             epoch = state['epoch']
-            depth_estimation_model_student.load_state_dict(state['model'])
+            depth_estimation_model.load_state_dict(state['model'])
             print('Restored model, epoch {}, step {}'.format(epoch, step))
         else:
-            print("No trained student model detected")
+            print("No trained model detected")
             raise OSError
     else:
         epoch = 0
@@ -230,15 +231,11 @@ if __name__ == '__main__':
         torch.manual_seed(10086 + epoch)
         np.random.seed(10086 + epoch)
         random.seed(10086 + epoch)
-        depth_estimation_model_student.train()
+        depth_estimation_model.train()
 
         # Update progress bar
         tq = tqdm.tqdm(total=len(train_loader) * batch_size, dynamic_ncols=True, ncols=40)
         # Variable initialization
-        mean_loss = 0.0
-        mean_depth_consistency_loss = 0.0
-        mean_sparse_flow_loss = 0.0
-
         if epoch <= 20:
             depth_consistency_weight = 0.1
         else:
@@ -276,8 +273,8 @@ if __name__ == '__main__':
             colors_2 = boundaries * colors_2
 
             # Predicted depth from student model
-            predicted_depth_maps_1 = depth_estimation_model_student(colors_1)
-            predicted_depth_maps_2 = depth_estimation_model_student(colors_2)
+            predicted_depth_maps_1 = depth_estimation_model(colors_1)
+            predicted_depth_maps_2 = depth_estimation_model(colors_2)
 
             scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
                 [predicted_depth_maps_1, sparse_depths_1, sparse_depth_masks_1])
@@ -327,7 +324,7 @@ if __name__ == '__main__':
                 optimizer.zero_grad()
                 loss.backward()
                 # Prevent one sample from having too much impact on the training
-                torch.nn.utils.clip_grad_norm_(depth_estimation_model_student.parameters(), 10.0)
+                torch.nn.utils.clip_grad_norm_(depth_estimation_model.parameters(), 10.0)
                 optimizer.step()
                 if batch == 0:
                     mean_loss = loss.item()
@@ -378,9 +375,6 @@ if __name__ == '__main__':
         if epoch % validation_each != 0:
             continue
 
-        mean_loss = 0.0
-        mean_depth_consistency_loss = 0.0
-        mean_sparse_flow_loss = 0.0
         tq = tqdm.tqdm(total=len(validation_loader) * batch_size, dynamic_ncols=True, ncols=40)
         tq.set_description('Validation Epoch {}'.format(epoch))
         with torch.no_grad():
@@ -412,8 +406,8 @@ if __name__ == '__main__':
                 colors_2 = boundaries * colors_2
 
                 # Predicted depth from student model
-                predicted_depth_maps_1 = depth_estimation_model_student(colors_1)
-                predicted_depth_maps_2 = depth_estimation_model_student(colors_2)
+                predicted_depth_maps_1 = depth_estimation_model(colors_1)
+                predicted_depth_maps_2 = depth_estimation_model(colors_2)
                 scaled_depth_maps_1, normalized_scale_std_1 = depth_scaling_layer(
                     [torch.abs(predicted_depth_maps_1), sparse_depths_1, sparse_depth_masks_1])
                 scaled_depth_maps_2, normalized_scale_std_2 = depth_scaling_layer(
@@ -491,7 +485,7 @@ if __name__ == '__main__':
         tq.close()
         model_path_epoch = log_root / 'checkpoint_model_epoch_{}_validation_{}.pt'.format(epoch,
                                                                                           mean_sparse_flow_loss)
-        utils.save_model(model=depth_estimation_model_student, optimizer=optimizer,
+        utils.save_model(model=depth_estimation_model, optimizer=optimizer,
                          epoch=epoch + 1, step=step, model_path=model_path_epoch,
                          validation_loss=mean_sparse_flow_loss)
         writer.export_scalars_to_json(

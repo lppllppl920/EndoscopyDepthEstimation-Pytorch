@@ -28,16 +28,18 @@ import dataset
 if __name__ == '__main__':
     cv2.destroyAllWindows()
     parser = argparse.ArgumentParser(
-        description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset--Evaluation',
+        description='Self-supervised Depth Estimation on Monocular Endoscopy Dataset -- Evaluate',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--input_downsampling', type=float, default=4.0,
-                        help='image downsampling rate to speed up training and reduce overfitting')
-    parser.add_argument('--torchsummary_input_size', nargs='+', type=int, required=True,
-                        help='input size for torchsummary (analysis purpose only)')
+                        help='image downsampling rate')
+    parser.add_argument('--input_size', nargs='+', type=int, required=True,
+                        help='input size')
     parser.add_argument('--selected_frame_index_list', nargs='+', type=int, required=False, default=None,
                         help='selected frame index list)')
     parser.add_argument('--batch_size', type=int, default=1, help='batch size for testing')
     parser.add_argument('--num_workers', type=int, default=2, help='number of workers for input data loader')
+    parser.add_argument('--num_pre_workers', type=int, default=8,
+                        help='number of workers for preprocessing intermediate data')
     parser.add_argument('--adjacent_range', nargs='+', type=int, required=True,
                         help='interval range for a pair of video frames')
     parser.add_argument('--id_range', nargs='+', type=int, required=True,
@@ -55,9 +57,10 @@ if __name__ == '__main__':
     parser.add_argument('--trained_model_path', type=str, required=True, help='path to the trained student model')
     parser.add_argument('--sequence_root', type=str, required=True, help='path to the testing sequence')
     parser.add_argument('--evaluation_result_root', type=str, required=True,
-                        help='root of the training input and ouput')
-    parser.add_argument('--evaluation_data_root', type=str, required=True, help='path to the training data')
-    parser.add_argument('--phase', type=str, required=True, help='evaluation phase')
+                        help='logging root')
+    parser.add_argument('--evaluation_data_root', type=str, required=True, help='path to the testing data')
+    parser.add_argument('--phase', type=str, required=True, help='phase')
+    parser.add_argument('--visibility_overlap', type=int, default=30, help='overlap of point visibility information')
     args = parser.parse_args()
 
     # Fix randomness for reproducibility
@@ -68,11 +71,7 @@ if __name__ == '__main__':
     random.seed(10085)
 
     # Hyper-parameters
-    if args.torchsummary_input_size is not None and len(args.torchsummary_input_size) == 2:
-        height, width = args.torchsummary_input_size
-    else:
-        height = 256
-        width = 320
+    height, width = args.input_size
     adjacent_range = args.adjacent_range
     id_range = args.id_range
     input_downsampling = args.input_downsampling
@@ -91,20 +90,16 @@ if __name__ == '__main__':
     evaluation_data_root = Path(args.evaluation_data_root)
     trained_model_path = Path(args.trained_model_path)
     sequence_root = Path(args.sequence_root)
+    visibility_overlap = args.visibility_overlap
+    num_pre_workers = args.num_pre_workers
     currentDT = datetime.datetime.now()
-
-    depth_estimation_model_teacher = []
-    failure_sequences = []
-
-    test_transforms = albu.Compose([
-        albu.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), max_pixel_value=255.0, p=1.)], p=1.)
 
     log_root = Path(evaluation_result_root) / "depth_estimation_evaluation_run_{}_{}_{}_{}_test_id_{}".format(
         currentDT.month,
         currentDT.day,
         currentDT.hour,
         currentDT.minute,
-        testing_patient_id)
+        "_".join(testing_patient_id))
     if not log_root.exists():
         log_root.mkdir(parents=True)
     writer = SummaryWriter(logdir=str(log_root))
@@ -131,7 +126,8 @@ if __name__ == '__main__':
                                           use_store_data=load_intermediate_data,
                                           store_data_root=evaluation_data_root,
                                           phase="validation", is_hsv=is_hsv,
-                                          num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
+                                          num_pre_workers=num_pre_workers, visible_interval=visibility_overlap,
+                                          rgb_mode="rgb")
 
         test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=batch_size, shuffle=False,
                                                   num_workers=0)
@@ -145,8 +141,7 @@ if __name__ == '__main__':
         if display_architecture:
             torchsummary.summary(depth_estimation_model, input_size=(3, height, width))
 
-        # Load previous student model
-        state = {}
+        # Load trained model
         if trained_model_path.exists():
             print("Loading {:s} ...".format(str(trained_model_path)))
             state = torch.load(str(trained_model_path))
@@ -236,7 +231,7 @@ if __name__ == '__main__':
                                                                                                      warped_depths_2_to_1=warped_depth_maps_2_to_1,
                                                                                                      sparse_flows_1=sparse_flows_1,
                                                                                                      flows_from_depth_1=flows_from_depth_1,
-                                                                                                     phase="Evaluation",
+                                                                                                     phase="validation",
                                                                                                      is_return_image=True,
                                                                                                      color_reverse=True,
                                                                                                      is_hsv=is_hsv,
@@ -252,14 +247,14 @@ if __name__ == '__main__':
                                                                                                      warped_depths_2_to_1=warped_depth_maps_1_to_2,
                                                                                                      sparse_flows_1=sparse_flows_2,
                                                                                                      flows_from_depth_1=flows_from_depth_2,
-                                                                                                     phase="Evaluation",
+                                                                                                     phase="validation",
                                                                                                      is_return_image=True,
                                                                                                      color_reverse=True,
                                                                                                      is_hsv=is_hsv,
                                                                                                      rgb_mode="rgb",
                                                                                                      boundaries=boundaries
                                                                                                      )
-                image_display = utils.stack_and_display(phase="Evaluation",
+                image_display = utils.stack_and_display(phase="validation",
                                                         title="Results (c1, sd1, d1, wd1, sf1, df1, c2, sd2, d2, wd2, sf2, df2)",
                                                         step=step, writer=writer,
                                                         image_list=[colors_1_display, sparse_depths_1_display,
@@ -291,7 +286,8 @@ if __name__ == '__main__':
                                           use_store_data=load_intermediate_data,
                                           store_data_root=evaluation_data_root,
                                           phase="test", is_hsv=is_hsv,
-                                          num_pre_workers=num_workers, visible_interval=30, rgb_mode="rgb")
+                                          num_pre_workers=num_pre_workers, visible_interval=visibility_overlap,
+                                          rgb_mode="rgb")
 
         test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=1, shuffle=False,
                                                   num_workers=0)
@@ -305,8 +301,7 @@ if __name__ == '__main__':
         if display_architecture:
             torchsummary.summary(depth_estimation_model, input_size=(3, height, width))
 
-        # Load previous student model
-        state = {}
+        # Load trained model
         if trained_model_path.exists():
             print("Loading {:s} ...".format(str(trained_model_path)))
             state = torch.load(str(trained_model_path))
@@ -315,7 +310,7 @@ if __name__ == '__main__':
             depth_estimation_model.load_state_dict(state['model'])
             print('Restored model, epoch {}, step {}'.format(epoch, step))
         else:
-            print("Trained model could not be found")
+            print("Trained model does not exist")
             raise OSError
         depth_estimation_model = depth_estimation_model.module
 

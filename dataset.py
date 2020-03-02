@@ -24,14 +24,12 @@ import utils
 
 def find_largest_size(folder_list, downsampling, network_downsampling, queue_size):
     for folder in folder_list:
-        folder = str(folder) + "/"
-        # Read undistorted mask image
-        undistorted_mask_boundary = cv2.imread(folder + "undistorted_mask.bmp", cv2.IMREAD_GRAYSCALE)
+        # Read mask image
+        undistorted_mask_boundary = cv2.imread(str(folder / "undistorted_mask.bmp"), cv2.IMREAD_GRAYSCALE)
         # Downsample and crop the undistorted mask image
         _, start_h, end_h, start_w, end_w = \
             utils.downsample_and_crop_mask(undistorted_mask_boundary, downsampling_factor=downsampling,
                                            divide=network_downsampling)
-        print(end_h - start_h, end_w - start_w)
         queue_size.put([end_h - start_h, end_w - start_w])
 
 
@@ -173,22 +171,16 @@ class SfMDataset(Dataset):
 
             process_pool = []
 
-            interval = len(self.folder_list) // self.num_pre_workers
+            interval = len(self.folder_list) / self.pre_workers
 
-            if self.num_pre_workers == 1:
+            # Go through the entire image list to find the largest required h and w
+            for i in range(self.num_pre_workers):
                 process_pool.append(Process(target=find_largest_size, args=(
-                    self.folder_list[:], self.downsampling,
-                    self.network_downsampling, queue_size)))
-            else:
-                # Go through the entire image list to find the largest required h and w
-                for i in range(self.num_pre_workers - 1):
-                    process_pool.append(Process(target=find_largest_size, args=(
-                        self.folder_list[i * interval: (i + 1) * interval], self.downsampling,
-                        self.network_downsampling,
-                        queue_size)))
-                process_pool.append(Process(target=find_largest_size, args=(
-                    self.folder_list[(self.num_pre_workers - 1) * interval:], self.downsampling,
-                    self.network_downsampling, queue_size)))
+                    self.folder_list[
+                    int(np.round(i * interval)): min(int(np.round((i + 1) * interval)), len(self.folder_list))],
+                    self.downsampling,
+                    self.network_downsampling,
+                    queue_size)))
 
             for t in process_pool:
                 t.start()
@@ -220,9 +212,11 @@ class SfMDataset(Dataset):
             print("Largest image size is: ", largest_h, largest_w)
             print("Start pre-processing dataset...")
             process_pool = []
-            for i in range(self.num_pre_workers - 1):
+            for i in range(self.num_pre_workers):
                 process_pool.append(Process(target=pre_processing_data,
-                                            args=(i, self.folder_list[i * interval: (i + 1) * interval],
+                                            args=(i, self.folder_list[
+                                                     int(np.round(i * interval)): min(int(np.round((i + 1) * interval)),
+                                                                                      len(self.folder_list))],
                                                   self.downsampling, self.network_downsampling, self.is_hsv,
                                                   self.inlier_percentage, self.visible_interval, largest_h, largest_w,
                                                   queue_clean_point_list,
@@ -233,19 +227,6 @@ class SfMDataset(Dataset):
                                                   queue_extrinsics, queue_projection,
                                                   queue_crop_positions,
                                                   queue_estimated_scale)))
-            process_pool.append(Process(target=pre_processing_data,
-                                        args=(self.num_pre_workers - 1,
-                                              self.folder_list[(self.num_pre_workers - 1) * interval:],
-                                              self.downsampling, self.network_downsampling, self.is_hsv,
-                                              self.inlier_percentage, self.visible_interval, largest_h, largest_w,
-                                              queue_clean_point_list,
-                                              queue_intrinsic_matrix, queue_point_cloud,
-                                              queue_mask_boundary, queue_view_indexes_per_point,
-                                              queue_selected_indexes,
-                                              queue_visible_view_indexes,
-                                              queue_extrinsics, queue_projection,
-                                              queue_crop_positions,
-                                              queue_estimated_scale)))
 
             for t in process_pool:
                 t.start()
