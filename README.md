@@ -53,7 +53,7 @@ month={},}
 
 3. Run ```student_training.py``` with proper arguments for self-supervised learning. One example is:
 ```
-/path/to/python /path/to/student_training.py --id_range 1 11 --input_downsampling 4.0 --network_downsampling 64 --adjacent_range 5 30 --input_size 256 320 --batch_size 8 --num_workers 8 --num_pre_workers 8 --validation_interval 1 --display_interval 50 --dcl_weight 5.0 --sfl_weight 20.0 --max_lr 1.0e-3 --min_lr 1.0e-4 --inlier_percentage 0.99 --training_patient_id 1 --testing_patient_id 1 --validation_patient_id 1 --number_epoch 100 --num_iter 1000 --architecture_summary --training_result_root "/path/to/training/directory" --training_data_root "/path/to/training/data"
+/path/to/python /path/to/student_training.py --id_range 1 2 --input_downsampling 4.0 --network_downsampling 64 --adjacent_range 5 30 --input_size 256 320 --batch_size 8 --num_workers 8 --num_pre_workers 8 --validation_interval 1 --display_interval 50 --dcl_weight 5.0 --sfl_weight 20.0 --max_lr 1.0e-3 --min_lr 1.0e-4 --inlier_percentage 0.99 --training_patient_id 1 --testing_patient_id 1 --validation_patient_id 1 --number_epoch 100 --num_iter 1000 --architecture_summary --training_result_root "/path/to/training/directory" --training_data_root "/path/to/training/data"
 ```
 
 4. Run ```evaluate.py``` to generate evaluation results. Apply any rigid registration algorithm to register the predicted point clouds to the corresponding CT model to calculate residual errors (this step may require manual point cloud initialization).
