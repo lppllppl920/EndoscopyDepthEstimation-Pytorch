@@ -17,7 +17,7 @@ In ***IEEE Transactions on Medical Imaging (TMI)***
 
 This work also won **Best paper award & Best presentation award** in International Workshop on Computer-Assisted and Robotic Endoscopy 2018
 
-Please contact [**Xingtong Liu**](http://www.cs.jhu.edu/~xingtongl/) (xliu89@jh.edu) or [**Mathias Unberath**](https://www.cs.jhu.edu/faculty/mathias-unberath/) (unberath@jhu.edu) if you have any questions.
+Please contact [**Xingtong Liu**](http://www.cs.jhu.edu/~xingtongl/) (xingtongliu@jhu.edu) or [**Mathias Unberath**](https://www.cs.jhu.edu/faculty/mathias-unberath/) (unberath@jhu.edu) if you have any questions.
 
 We kindly ask you to cite [TMI Early Access](https://ieeexplore.ieee.org/abstract/document/8889760) or [CARE Workshop](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) if the code is used in your own work.
 ```
