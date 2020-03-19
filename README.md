@@ -1,4 +1,4 @@
-# Dense Depth Estimation in Monocular Endoscopy
+# Dense Depth Estimation in Monocular Endoscopy with Self-supervised Learning Methods
 
 
 ![](clip_1.gif) ![](clip_2.gif)
