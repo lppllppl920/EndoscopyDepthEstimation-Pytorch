@@ -1,4 +1,4 @@
-# Self-supervised Depth Estimation in Monocular Endoscopy
+# Dense Depth Estimation in Monocular Endoscopy
 
 
 ![](clip_1.gif) ![](clip_2.gif)
