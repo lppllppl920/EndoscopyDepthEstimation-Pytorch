@@ -19,7 +19,7 @@ This work also won **Best paper award & Best presentation award** in Internation
 
 Please contact [**Xingtong Liu**](http://www.cs.jhu.edu/~xingtongl/) (xingtongliu@jhu.edu) or [**Mathias Unberath**](https://www.cs.jhu.edu/faculty/mathias-unberath/) (unberath@jhu.edu) if you have any questions.
 
-We kindly ask you to cite [TMI Early Access](https://ieeexplore.ieee.org/abstract/document/8889760) or [CARE Workshop](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) if the code is used in your own work.
+We kindly ask you to cite [TMI](https://ieeexplore.ieee.org/abstract/document/8889760) or [CARE Workshop](https://link.springer.com/chapter/10.1007/978-3-030-01201-4_15) if the code is used in your own work.
 ```
 @ARTICLE{liu2019dense,
   author={X. {Liu} and A. {Sinha} and M. {Ishii} and G. D. {Hager} and A. {Reiter} and R. H. {Taylor} and M. {Unberath}},
