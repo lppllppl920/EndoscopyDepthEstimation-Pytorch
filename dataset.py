@@ -171,7 +171,7 @@ class SfMDataset(Dataset):
 
             process_pool = []
 
-            interval = len(self.folder_list) / self.pre_workers
+            interval = len(self.folder_list) / self.num_pre_workers
 
             # Go through the entire image list to find the largest required h and w
             for i in range(self.num_pre_workers):
