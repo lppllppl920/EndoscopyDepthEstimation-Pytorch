@@ -41,10 +41,10 @@ class NormalizedWeightedMaskedL2Loss(nn.Module):
         depth_maps, warped_depth_maps, intersect_masks, translations = x
         # loss = torch.sum(torch.log(1.0 + torch.abs(intersect_masks * (depth_maps - warped_depth_maps))), dim=(1, 2, 3)) / (self.epsilon + torch.sum(intersect_masks, dim=(1, 2, 3)))
 
-        translations = translations.view(-1, 3, 1)
-        translation_norms = torch.sqrt(torch.sum(translations * translations, dim=(1, 2))).view(-1)
+        translations = translations.reshape(-1, 3, 1)
+        translation_norms = torch.sqrt(torch.sum(translations * translations, dim=(1, 2))).reshape(-1)
         translation_weights = (
-                torch.tensor(1.0).float().cuda() / (torch.tensor(1.0e-8).float().cuda() + translation_norms)).view(
+                torch.tensor(1.0).float().cuda() / (torch.tensor(1.0e-8).float().cuda() + translation_norms)).reshape(
             -1)
         loss = torch.sum(intersect_masks * (depth_maps - warped_depth_maps) * (depth_maps - warped_depth_maps),
                          dim=(1, 2, 3), keepdim=False) / (0.5 * torch.sum(
@@ -116,15 +116,15 @@ class NormalizedDistanceLoss(nn.Module):
         self.y_grid, self.x_grid = torch.meshgrid(
             [torch.arange(start=0, end=height, dtype=torch.float32).cuda(),
              torch.arange(start=0, end=width, dtype=torch.float32).cuda()])
-        self.y_grid = self.y_grid.view(1, 1, height, width)
-        self.x_grid = self.x_grid.view(1, 1, height, width)
+        self.y_grid = self.y_grid.reshape(1, 1, height, width)
+        self.x_grid = self.x_grid.reshape(1, 1, height, width)
 
     def forward(self, x):
         depth_maps, warped_depth_maps, intersect_masks, intrinsics = x
-        fx = intrinsics[:, 0, 0].view(-1, 1, 1, 1)
-        fy = intrinsics[:, 1, 1].view(-1, 1, 1, 1)
-        cx = intrinsics[:, 0, 2].view(-1, 1, 1, 1)
-        cy = intrinsics[:, 1, 2].view(-1, 1, 1, 1)
+        fx = intrinsics[:, 0, 0].reshape(-1, 1, 1, 1)
+        fy = intrinsics[:, 1, 1].reshape(-1, 1, 1, 1)
+        cx = intrinsics[:, 0, 2].reshape(-1, 1, 1, 1)
+        cy = intrinsics[:, 1, 2].reshape(-1, 1, 1, 1)
 
         with torch.no_grad():
             mean_value = torch.sum(intersect_masks * depth_maps, dim=(1, 2, 3), keepdim=False) / (

@@ -865,12 +865,12 @@ def write_point_cloud(path, point_cloud):
 
 def draw_flow(flows, max_v=None):
     batch_size, channel, height, width = flows.shape
-    flows_x_display = vutils.make_grid(flows[:, 0, :, :].view(batch_size, 1, height, width), normalize=False,
+    flows_x_display = vutils.make_grid(flows[:, 0, :, :].reshape(batch_size, 1, height, width), normalize=False,
                                        scale_each=False)
-    flows_y_display = vutils.make_grid(flows[:, 1, :, :].view(batch_size, 1, height, width), normalize=False,
+    flows_y_display = vutils.make_grid(flows[:, 1, :, :].reshape(batch_size, 1, height, width), normalize=False,
                                        scale_each=False)
-    flows_display = torch.cat([flows_x_display[0, :, :].view(1, flows_x_display.shape[1], flows_x_display.shape[2]),
-                               flows_y_display[0, :, :].view(1, flows_x_display.shape[1], flows_x_display.shape[2])],
+    flows_display = torch.cat([flows_x_display[0, :, :].reshape(1, flows_x_display.shape[1], flows_x_display.shape[2]),
+                               flows_y_display[0, :, :].reshape(1, flows_x_display.shape[1], flows_x_display.shape[2])],
                               dim=0)
     flows_display = flows_display.data.cpu().numpy()
     flows_display = np.moveaxis(flows_display, source=[0, 1, 2], destination=[2, 0, 1])
