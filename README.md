@@ -57,7 +57,7 @@ We kindly ask you to cite [TMI](https://ieeexplore.ieee.org/abstract/document/88
 /path/to/python /path/to/evaluate.py --id_range 1 2 --input_downsampling 4.0 --network_downsampling 64 --adjacent_range 5 30 --input_size 256 320 --batch_size 1 --num_workers 2 --num_pre_workers 8 --load_all_frames --inlier_percentage 0.99 --visibility_overlap 30 --testing_patient_id 1 --load_intermediate_data --architecture_summary --trained_model_path "/path/to/trained/model" --sequence_root "/path/to/sequence/path" --evaluation_result_root "/path/to/testing/result" --evaluation_data_root "/path/to/testing/data" --phase "test"
 ```
 
-5. The SfM method is implemented based on the work below. However, any standard SfM methods should also work reasonably well, such as [COLMAP](https://colmap.github.io/), and the SfM results need to be reformatted to be correctly loaded for network training. 
+5. The SfM method is implemented based on the work below. However, any standard SfM methods should also work reasonably well, such as [COLMAP](https://colmap.github.io/), and the SfM results need to be reformatted to be correctly loaded for network training. Please refer to [this repo](https://github.com/lppllppl920/DenseDescriptorLearning-Pytorch) if you want to convert the format of COLMAP results. The generated folder hierarchy needs to be changed to the same one as in ```example_training_data_root``` if the conversion script there is used.
 ```
 @inproceedings{leonard2016image,
   title={Image-based navigation for functional endoscopic sinus surgery using structure from motion},

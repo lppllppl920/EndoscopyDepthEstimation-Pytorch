@@ -172,12 +172,14 @@ def read_camera_intrinsic_per_view(prefix_seq):
             # Focal length
             if param_count == 0:
                 temp_camera_intrincis[0][0] = float(line)
-                temp_camera_intrincis[1][1] = float(line)
-                param_count = 1
+                param_count += 1
             elif param_count == 1:
-                temp_camera_intrincis[0][2] = float(line)
-                param_count = 2
+                temp_camera_intrincis[1][1] = float(line)
+                param_count += 1
             elif param_count == 2:
+                temp_camera_intrincis[0][2] = float(line)
+                param_count += 1
+            elif param_count == 3:
                 temp_camera_intrincis[1][2] = float(line)
                 temp_camera_intrincis[2][2] = 1.0
                 camera_intrinsics.append(temp_camera_intrincis)
