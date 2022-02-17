@@ -80,6 +80,3 @@ We kindly ask you to cite [TMI](https://ieeexplore.ieee.org/abstract/document/88
 
 - [Extremely Dense Point Correspondences using a Learned Feature Descriptor (CVPR 2020)](https://github.com/lppllppl920/DenseDescriptorLearning-Pytorch)
 
-## Disclaimer
-This codebase is only experimental and not ready for clinical applications. Authors are not responsible for any accidents related to this repository.
-
