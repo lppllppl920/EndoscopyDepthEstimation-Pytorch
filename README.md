@@ -71,11 +71,14 @@ We kindly ask you to cite [TMI](https://ieeexplore.ieee.org/abstract/document/88
 ```
 
 ## Related Projects
-[Neighborhood Normalization for Robust Geometric Feature Learning (CVPR 2021)](https://github.com/lppllppl920/NeighborhoodNormalization-Pytorch)
 
-[Reconstructing Sinus Anatomy from Endoscopic Video -- Towards a Radiation-free Approach for Quantitative Longitudinal Assessment (MICCAI 2020)](https://github.com/lppllppl920/DenseReconstruction-Pytorch)
+- [SAGE: SLAM with Appearance and Geometry Prior for Endoscopy (ICRA 2022)](https://github.com/lppllppl920/SAGE-SLAM)
 
-[Extremely Dense Point Correspondences using a Learned Feature Descriptor (CVPR 2020)](https://github.com/lppllppl920/DenseDescriptorLearning-Pytorch)
+- [Neighborhood Normalization for Robust Geometric Feature Learning (CVPR 2021)](https://github.com/lppllppl920/NeighborhoodNormalization-Pytorch)
+
+- [Reconstructing Sinus Anatomy from Endoscopic Video -- Towards a Radiation-free Approach for Quantitative Longitudinal Assessment (MICCAI 2020)](https://github.com/lppllppl920/DenseReconstruction-Pytorch)
+
+- [Extremely Dense Point Correspondences using a Learned Feature Descriptor (CVPR 2020)](https://github.com/lppllppl920/DenseDescriptorLearning-Pytorch)
 
 ## Disclaimer
 This codebase is only experimental and not ready for clinical applications. Authors are not responsible for any accidents related to this repository.
